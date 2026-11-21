@@ -86,6 +86,7 @@ details.prev summary{font-weight:600;color:var(--g);font-size:13px;cursor:pointe
 .nt{border:1px solid #e3ddd8;border-radius:12px;padding:10px 12px;margin-bottom:8px;cursor:pointer}.nt.new{border-left:4px solid var(--or);background:#fff8f2}.nt b{color:var(--g);font-size:14px}.nt p{margin:4px 0;font-size:13px}.nt small{color:var(--mut);font-size:11.5px}
 #bell{color:#fff;font-size:12px;text-decoration:none;opacity:.85}#bell.has{opacity:1;font-weight:700;color:var(--br)}
 .doc{font-size:11.5px;font-weight:600;color:#0b6fa0;margin-left:4px;white-space:nowrap}
+.cli.fin{cursor:default;background:#faf7f5}
 .chip.won{background:#9fc55a;color:#274820}.chip.rc{background:#ebe3df;color:#622a10}
 </style>
 </head>
@@ -145,7 +146,7 @@ function propDeadline(c){if(!c.kmlAt)return null;const dl=new Date(new Date(c.km
 function propValue(c){return num(c.cs[1]?.["Valor da proposta (R$)"])}
 function closedValue(c){return num(c.ans[2]?.["Valor final (R$)"])||propValue(c)}
 function samples(c){return num(c.cs[1]?.["Nº de amostras"])}
-function alertsOf(db){const a=[];db.clients.filter(c=>c.status!=="lead").forEach(c=>{const n=days(c);const p=propDeadline(c);
+function alertsOf(db){const a=[];db.clients.filter(isActive).forEach(c=>{const n=days(c);const p=propDeadline(c);
  if(c.stage===2&&p&&!p.done&&p.left<0)a.push([c,`Proposta atrasada: prazo de 48 h vencido há ${Math.round(-p.left)} h`]);
  else if(c.stage===2&&p&&!p.done)a.push([c,`Proposta vence em ${Math.round(p.left)} h`]);
  else if(c.stage===2&&n>14)a.push([c,`Proposta sem resposta há ${n} dias`]);
@@ -154,22 +155,28 @@ function alertsOf(db){const a=[];db.clients.filter(c=>c.status!=="lead").forEach
  else if(n>21)a.push([c,`Sem atualização há ${n} dias`])});return a}
 /* Ofertas de novas áreas: [índice da etapa, campo da oferta, campo do KML, momento] */
 const OFFERS=[[5,"Oferta de expansão","KML das novas áreas","entrega técnica"],[6,"D+7 · oferta de orçamento novas áreas","D+7 · KML das novas áreas","D+7"],[6,"Colheita · oferta de orçamento novas áreas","Colheita · KML das novas áreas","colheita"]];
-const baseName=n=>n.replace(/\s+RECOMPRA$/,"");
+const baseName=n=>n.replace(/\s+RECOMPRA(\s+\d+)?$/,"");
+/* próximo nome de recompra: "Nome RECOMPRA", depois "Nome RECOMPRA 2", "Nome RECOMPRA 3"... */
+function recompraName(db,c){const b=baseName(c.nome);let k=0;db.clients.forEach(x=>{if(baseName(x.nome)!==b)return;const m=x.nome.match(/RECOMPRA(?:\s+(\d+))?$/);if(m)k=Math.max(k,m[1]?+m[1]:1)});return b+" RECOMPRA"+(k?" "+(k+1):"")}
+const lnk=u=>!u?"":/^[a-z][\w+.-]*:/i.test(u)?u:"https://"+u;
+const isActive=c=>!c.status||c.status==="ativo";
 function newId(db){return Date.now()*1000+Math.floor(Math.random()*1000)}
 function spawnRecompra(db,c,o){const now=new Date().toISOString();const id=newId(db);
- const n={id,nome:baseName(c.nome)+" RECOMPRA",seller:c.seller,sellerId:c.sellerId,tipo:c.tipo||"",uf:c.uf,stage:1,upd:todayISO(),geo:c.geo,plat:c.plat,sf:c.sf,kml:null,kmlAt:null,agencia:c.agencia||"",ans:{0:{...(c.ans[0]||{})}},cs:{},hist:[],status:"ativo",parent:c.id,...o};
+ const n={id,nome:recompraName(db,c),seller:c.seller,sellerId:c.sellerId,tipo:c.tipo||"",uf:c.uf,stage:1,upd:todayISO(),geo:c.geo,plat:c.plat,sf:c.sf,kml:null,kmlAt:null,agencia:c.agencia||"",ans:{0:{...(c.ans[0]||{})}},cs:{},hist:[],status:"ativo",parent:c.id,...o};
  n.hist.push({stage:n.stage,date:todayISO(),by:o.by||c.seller});db.clients.push(n);return n}
 /* Depois de salvar uma etapa no caderno: cria RECOMPRA (aceite + KML) ou lead RECOMPRA (recusa final) */
 function processOffers(db,c,by){const msgs=[];c.spawn=c.spawn||{};c.kmlExp=c.kmlExp||{};
  OFFERS.forEach(([i,off,kl,when])=>{const v=c.ans[i]?.[off];if(c.spawn[off])return;
   if(v==="Aceitou"&&c.kmlExp[kl]){const k=c.kmlExp[kl];const n=spawnRecompra(db,c,{stage:2,kml:{name:k.name,type:k.type,size:k.size,path:k.path,at:k.at},kmlAt:k.at,geo:k.geo||c.geo,origem:"Expansão aceita no "+when,by});
-   c.spawn[off]=n.id;c.won=true;msgs.push(`Cliente ganho: "${n.nome}" criado na etapa 2`)}
-  if(v==="Recuou"&&when==="colheita"){const n=spawnRecompra(db,c,{status:"lead",leadOrigem:"Recompra recusada na colheita",leadMotivo:c.ans[i]["Motivo (se recusou na colheita)"]||"",leadDate:todayISO(),by});c.spawn[off]=n.id;msgs.push(`Recompra recusada: "${n.nome}" foi para Leads`)}});
- if(c.ans[7]?.["Resultado"]==="Perdeu"&&!c.spawn["Resultado"]){const n=spawnRecompra(db,c,{status:"lead",leadOrigem:"Recompra recusada na recorrência",leadMotivo:c.ans[7]["Motivo da perda"]||"",leadDate:todayISO(),by});c.spawn["Resultado"]=n.id;msgs.push(`Recompra recusada: "${n.nome}" foi para Leads`)}
+   c.spawn[off]=n.id;c.won=true;finalize(c,"Recompra · expansão aceita no "+when,"");msgs.push(`Cliente ganho: "${n.nome}" criado na etapa 2. "${c.nome}" foi para Finalizados`)}
+  if(v==="Recuou"&&when==="colheita"){c.spawn[off]=-1;finalize(c,"Não renovou · recusou na colheita",c.ans[i]["Motivo (se recusou na colheita)"]||"");msgs.push(`"${c.nome}" foi para Finalizados (não renovou)`)}});
+ if(c.ans[7]?.["Resultado"]==="Perdeu"&&!c.spawn["Resultado"]){c.spawn["Resultado"]=-1;finalize(c,"Não renovou · fim do ciclo",c.ans[7]["Motivo da perda"]||"");msgs.push(`"${c.nome}" foi para Finalizados (não renovou)`)}
  return msgs}
+/* finalizado: sai da jornada, vai para Finalizados no caderno e para Leads no painel */
+function finalize(c,origem,motivo){Object.assign(c,{status:"finalizado",leadOrigem:origem,leadMotivo:motivo,leadDate:todayISO()})}
 /* Quem precisa responder: CS (vermelho) ou vendedor (laranja) */
 const CHECKS5=["Contato 1 · Introdução à metagenômica","Contato 2 · Books","Contato 3 · Como ler os resultados","Laudo pronto"];
-function needsCS(c){if(c.status==="lead")return "";const cs=c.cs||{};
+function needsCS(c){if(!isActive(c))return "";const cs=c.cs||{};
  if(c.stage<=2&&c.kml&&!cs[1]?.["Link da proposta"])return "Enviar proposta (48 h)";
  if(c.stage===4&&(!cs[3]?.["Data prevista da coleta"]||!cs[3]?.["Empresa amostradora"]))return "Definir coleta e amostrador";
  if(c.stage===4&&!cs[3]?.["Coleta concluída"])return "Confirmar a coleta";
@@ -178,7 +185,7 @@ function needsCS(c){if(c.status==="lead")return "";const cs=c.cs||{};
  if(c.stage===5&&!CHECKS5.every(k=>cs[4]?.[k]))return "Fazer contatos e liberar laudo";
  if(c.stage===5&&!cs[4]?.["Entrega técnica marcada para"])return "Marcar a entrega técnica";
  if(c.vAt&&(!c.csAt||c.vAt>c.csAt))return "Nova atualização do vendedor";return ""}
-function needsSeller(c){if(c.status==="lead"||needsCS(c))return "";const a=c.ans||{};
+function needsSeller(c){if(!isActive(c)||needsCS(c))return "";const a=c.ans||{};
  if(c.stage===1&&!c.kml)return "Aguardando KML do vendedor";
  if(c.stage===2&&(!a[1]?.["Aprovação formalizada"]||a[1]["Aprovação formalizada"]==="—"))return "Aguardando aprovação do cliente";
  if(c.stage===3&&!a[2]?.["Valor final (R$)"])return "Aguardando dados fiscais";
@@ -202,7 +209,7 @@ function renderRecords(db,cid,stage){
 }
 function csInfoHTML(db,c,i){const f=CSF[i];const v=c.cs[i]||{};const msg=c.cs[i]?.["Mensagem para o vendedor"];
  const rows=f.map(([lab,t])=>{let val=v[lab];if(t==="check")return `<div class="ck ${val?"on":""}">${val?"✔":"○"} ${esc(lab)} ${val?docLinks(lab):""}</div>`;
-  if(!val)return "";if(t==="url")return `<div><span>${esc(lab)}:</span> <a href="${esc(val)}" target="_blank">abrir</a></div>`;
+  if(!val)return "";if(t==="url")return `<div><span>${esc(lab)}:</span> <a href="${esc(lnk(val))}" target="_blank" rel="noopener">abrir</a></div>`;
   if(t==="sampler")val=samplerName(db,val);if(t==="date")val=fmtDate(val);if(lab.includes("R$"))val=brl(val);
   return `<div><span>${esc(lab)}:</span> ${esc(val)}</div>`}).join("");
  const due=i===4&&analysisDue(c)?`<div><span>Prazo da análise:</span> <b>${fmtDate(analysisDue(c))}</b> (4 semanas após a chegada)</div>`:"";
@@ -341,7 +348,7 @@ function setupHeader(){seller=ME.nome;sellerId=ME.id;
  if(isGestor()){const ps=PROFILES.filter(p=>p.ativo||db.clients.some(c=>c.sellerId===p.id));$("#who").textContent="Carteira de:";$("#seller").style.display="";$("#seller").innerHTML=ps.map(p=>`<option value="${p.id}" ${p.id===ME.id?"selected":""}>${esc(p.nome)}${p.papel==="gestor"?" (gestor)":""}</option>`).join("");$("#toPainel").style.display=""}
  else $("#who").textContent=ME.nome}
 window.addEventListener("storage",e=>{if(e.key===KEY){db=load();if(!document.activeElement||!/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName))render()}});
-function render(){ if(openId==="new")return newForm(); const c=db.clients.find(x=>x.id===openId); if(c&&c.status!=="lead")return clientView(c); listView(); }
+function render(){ if(openId==="new")return newForm(); const c=db.clients.find(x=>x.id===openId); if(c&&isActive(c))return clientView(c); listView(); }
 const readText=f=>new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result);fr.onerror=()=>r(null);fr.readAsText(f)});
 const readURL=f=>new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result);fr.onerror=()=>r(null);fr.readAsDataURL(f)});
 function shrink(file){return new Promise(res=>{const img=new Image();const u=URL.createObjectURL(file);img.onload=()=>{const m=1600,s=Math.min(1,m/Math.max(img.width,img.height));const cv=document.createElement("canvas");cv.width=img.width*s;cv.height=img.height*s;cv.getContext("2d").drawImage(img,0,0,cv.width,cv.height);URL.revokeObjectURL(u);res(cv.toDataURL("image/jpeg",0.82))};img.onerror=()=>res(null);img.src=u})}
@@ -349,7 +356,20 @@ async function takeKml(c,f){await flush();const k=await uploadAreaFile(c.id,f);c
 
 const myNotifs=()=>NOTIFS.filter(n=>n.seller_id===sellerId);
 const unread=()=>myNotifs().filter(n=>!n.read_at).length;
-function tabsHTML(){const u=unread();return `<div class="tabs"><button class="${tab==="clientes"?"on":""}" data-tab="clientes">Meus clientes</button><button class="${tab==="notif"?"on":""}" data-tab="notif">Notificações${u?` <span class="badge">${u}</span>`:""}</button></div>`}
+function tabsHTML(){const u=unread();return `<div class="tabs"><button class="${tab==="clientes"?"on":""}" data-tab="clientes">Meus clientes</button><button class="${tab==="notif"?"on":""}" data-tab="notif">Notificações${u?` <span class="badge">${u}</span>`:""}</button><button class="${tab==="fin"?"on":""}" data-tab="fin">Finalizados</button></div>`}
+function finView(){
+ $("#bar").style.display="none";
+ const F=db.clients.filter(c=>c.sellerId===sellerId&&c.status==="finalizado").sort((a,b)=>(b.leadDate||"").localeCompare(a.leadDate||""));
+ const L=db.clients.filter(c=>c.sellerId===sellerId&&c.status==="lead").sort((a,b)=>(b.leadDate||"").localeCompare(a.leadDate||""));
+ const card=c=>{const nx=Object.values(c.spawn||{}).map(id=>db.clients.find(x=>x.id===id)).filter(Boolean);
+  return `<div class="cli fin"><b>${esc(c.nome)}</b><small>${esc(c.uf)}${c.agencia?" · "+esc(agName(db,c.agencia)):""} · desde ${fmtDate(c.leadDate||c.upd)}</small><span class="chip ${/^Recompra/.test(c.leadOrigem||"")?"won":"rc"}">${esc(c.leadOrigem||"")}</span>${c.leadMotivo?`<div class="note" style="margin-top:4px">${esc(c.leadMotivo)}</div>`:""}${nx.length?`<div class="note" style="margin-top:4px">Nova compra: ${nx.map(n=>`<span class="link" data-open="${n.id}">${esc(n.nome)}</span>`).join(", ")}</div>`:""}</div>`};
+ $("#main").innerHTML=`${tabsHTML()}
+ <p class="note" style="margin-top:0">Clientes que concluíram a jornada: fizeram a entrega técnica e compraram de novo (a nova compra segue como cartão RECOMPRA) ou chegaram ao fim do ciclo sem renovar. No painel, eles ficam em Leads.</p>
+ ${F.map(card).join("")||'<p class="note">Nenhum cliente finalizado ainda.</p>'}
+ ${L.length?`<h2>Leads · proposta recusada (${L.length})</h2>${L.map(card).join("")}`:""}
+ <p class="note">O CS reativa clientes pelo painel.</p>`;
+ bindTabs();document.querySelectorAll("[data-open]").forEach(e=>e.onclick=()=>{const n=db.clients.find(x=>x.id===+e.dataset.open);if(n&&isActive(n)){tab="clientes";openId=n.id;render();scrollTo(0,0)}});
+}
 function bindTabs(){document.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{tab=b.dataset.tab;render();scrollTo(0,0)})}
 async function loadNotifs(){const {data,error}=await sb.from("notifications").select("*").order("created_at",{ascending:false}).limit(200);if(!error)NOTIFS=data||[];updBell()}
 function updBell(){const b=$("#bell");if(!b)return;const u=unread();b.textContent=u?"🔔 "+u:"🔔";b.classList.toggle("has",!!u)}
@@ -360,17 +380,17 @@ function notifView(){
  $("#main").innerHTML=`${tabsHTML()}
  ${N.map(n=>{const cl=db.clients.find(x=>x.id===n.client_id);return `<div class="nt ${n.read_at?"":"new"}" data-n="${n.id}" data-c="${n.client_id||""}"><b>${esc(n.title)}</b><p>${esc(n.body)}</p><small>${fmtDT(n.created_at)}${n.stage?" · etapa "+n.stage:""}${cl?"":" · cliente fora da sua carteira"}</small></div>`}).join("")||'<p class="note">Nenhuma notificação ainda. Quando o CS anexar a proposta, agendar a coleta, registrar a chegada no laboratório ou liberar o laudo, o aviso aparece aqui.</p>'}`;
  bindTabs();const ar=$("#allRead");if(ar)ar.onclick=async()=>{await markRead(N.filter(n=>!n.read_at).map(n=>n.id));notifView()};
- document.querySelectorAll(".nt").forEach(e=>e.onclick=async()=>{const id=+e.dataset.n;markRead([id]);const cid=+e.dataset.c;if(db.clients.find(x=>x.id===cid&&x.status!=="lead")){tab="clientes";openId=cid;render();scrollTo(0,0)}else notifView()});
+ document.querySelectorAll(".nt").forEach(e=>e.onclick=async()=>{const id=+e.dataset.n;markRead([id]);const cid=+e.dataset.c;if(db.clients.find(x=>x.id===cid&&isActive(x))){tab="clientes";openId=cid;render();scrollTo(0,0)}else notifView()});
 }
 function listView(){
  if(tab==="notif")return notifView();
+ if(tab==="fin")return finView();
  $("#bar").style.display="flex";$("#bar").innerHTML=`<button class="btn" id="new">+ Novo cliente</button>`;
  $("#new").onclick=()=>{openId="new";render()};
- const leads=db.clients.filter(c=>c.sellerId===sellerId&&c.status==="lead");
- const mine=db.clients.filter(c=>c.sellerId===sellerId&&c.status!=="lead"&&c.nome.toLowerCase().includes(q.toLowerCase())).sort((a,b)=>a.stage-b.stage);
+  const mine=db.clients.filter(c=>c.sellerId===sellerId&&isActive(c)&&c.nome.toLowerCase().includes(q.toLowerCase())).sort((a,b)=>a.stage-b.stage);
  $("#main").innerHTML=`${tabsHTML()}<input class="search" id="q" placeholder="Buscar cliente" value="${esc(q)}">
  ${mine.map(c=>`<div class="cli" data-id="${c.id}"><b>${esc(c.nome)}</b><small>${esc(c.uf)}${c.agencia?" · "+esc(agName(db,c.agencia)):""} · atualizado ${ago(c)}</small><span class="chip ${c.stage===6?"s6":""}">${c.stage}. ${STAGES[c.stage-1]}</span>${c.won?' <span class="chip won">Expansão ganha</span>':""}${/ RECOMPRA$/.test(c.nome)?' <span class="chip rc">Recompra</span>':""}</div>`).join("")||"<p>Nenhum cliente. Toque em + Novo cliente.</p>"}
- ${leads.length?`<details class="prev" style="margin-top:16px"><summary>Meus leads (${leads.length})</summary>${leads.map(c=>`<div class="ans"><b>${esc(c.nome)}</b><br><span>${esc(c.leadOrigem||"")}${c.leadMotivo?" · "+esc(c.leadMotivo):""} · ${fmtDate(c.leadDate||c.upd)}</span></div>`).join("")}<p class="note">O CS reativa leads pelo painel.</p></details>`:""}`;
+`;
  $("#q").oninput=e=>{q=e.target.value;const p=e.target.selectionStart;listView();const i=$("#q");i.focus();i.setSelectionRange(p,p)};
  bindTabs();document.querySelectorAll(".cli").forEach(e=>e.onclick=()=>{openId=+e.dataset.id;render();scrollTo(0,0)});
 }
@@ -416,10 +436,10 @@ function deadlineHTML(c){const p=propDeadline(c);
  const h=Math.round(p.left);return h>=0?`<div class="dl wait"><b>Proposta em preparação pelo CS</b>KML enviado em ${fmtDT(c.kmlAt)}. Prazo: ${fmtDT(p.dl)} · faltam ${h} h.</div>`:`<div class="dl late"><b>Proposta atrasada</b>O prazo de 48 h venceu em ${fmtDT(p.dl)} (há ${-h} h). Fale com o CS.</div>`}
 
 function clientView(c){
- const i=c.stage-1;const recs=db.records.filter(r=>r.cid===c.id&&r.stage===c.stage);
+ const i=c.stage-1;const free=isGestor();const recs=db.records.filter(r=>r.cid===c.id&&r.stage===c.stage);
  const autoOk=(i===3&&!!c.cs[3]?.["Coleta concluída"])||(i===4&&["Contato 1 · Introdução à metagenômica","Contato 2 · Books","Contato 3 · Como ler os resultados","Laudo pronto"].every(k=>c.cs[4]?.[k]));
  $("#bar").style.display="flex";
- $("#bar").innerHTML=`${FIELDS[i].length?`<button class="btn ghost" id="saveSt">Salvar</button>`:""}<button class="btn or" id="adv" ${autoOk?"":"disabled"}>${c.stage<8?"Avançar → etapa "+(c.stage+1):"Concluir ciclo"}</button>`;
+ $("#bar").innerHTML=`${FIELDS[i].length?`<button class="btn ghost" id="saveSt">Salvar</button>`:""}<button class="btn or" id="adv" ${autoOk||free?"":"disabled"}>${c.stage<8?"Avançar → etapa "+(c.stage+1):"Concluir ciclo"}</button>`;
  const prev=STAGES.slice(0,i).map((s,k)=>{const a=c.ans[k]||{};const ent=Object.entries(a).filter(([x,v])=>v&&v!=="—");const r=renderRecords(db,c.id,k+1);
    return `<details class="prev"><summary>${k+1}. ${s}</summary>${ent.map(([x,v])=>`<div class="ans"><span>${esc(x)}:</span> ${esc(v)}</div>`).join("")}${csInfoHTML(db,c,k)}${r}${!ent.length&&!r&&!csInfoHTML(db,c,k)?'<div class="ans"><span>Sem registros.</span></div>':""}</details>`}).join("");
  const csOnly=FIELDS[i].length===0;
@@ -427,6 +447,7 @@ function clientView(c){
  <h1 style="margin-top:8px">${esc(c.nome)}</h1>
  <div style="font-size:12.5px;color:var(--mut)">${esc(c.uf)}${c.agencia?" · "+esc(agName(db,c.agencia)):""} ${c.kml?`<span class="kml">· ${dlLink(c.kml)}</span>`:""}</div>
  <div class="stepper">${STAGES.map((_,k)=>`<div class="${k<i?"done":k===i?"cur":""}"></div>`).join("")}</div>
+ ${free?`<label style="margin-top:6px">Gestor: mover para a etapa</label><select id="jump">${STAGES.map((s,k)=>`<option value="${k+1}" ${k===i?"selected":""}>${k+1}. ${s}</option>`).join("")}</select>`:""}
  <div class="stagehead">Etapa ${c.stage} · ${STAGES[i]}</div>
  ${i===1?deadlineHTML(c):""}
  ${csInfoHTML(db,c,i)}
@@ -445,19 +466,21 @@ function clientView(c){
  ${prev?`<h2>Etapas anteriores</h2>${prev}`:""}`;
  $("#back").onclick=()=>{openId=null;render()};
  const collect=()=>{c.ans[i]=c.ans[i]||{};document.querySelectorAll("[data-l]").forEach(e=>{c.ans[i][e.dataset.l]=e.dataset.multi?[...e.querySelectorAll("input:checked")].map(x=>x.value).join(", "):e.value})};
- const crit=$("#crit"),adv=$("#adv");if(crit)crit.onchange=()=>adv.disabled=!crit.checked;
- const apv=document.querySelector('[data-l="Aprovação formalizada"]');if(apv){const upd=()=>{if(!c.cs[1]?.["Link da proposta"]){adv.textContent="Aguardando a proposta do CS";adv.disabled=true;return}const no=apv.value==="Não";adv.textContent=no?"Mover para Leads":"Avançar → etapa 3";adv.classList.toggle("red",no);if(no)adv.disabled=false;else adv.disabled=!(crit&&crit.checked)};apv.onchange=upd;upd()}
+ const crit=$("#crit"),adv=$("#adv");if(crit)crit.onchange=()=>adv.disabled=!free&&!crit.checked;
+ const js=$("#jump");if(js)js.onchange=()=>{const st=+js.value;c.stage=st;c.hist.push({stage:st,date:todayISO(),by:seller+" (gestor)"});c.upd=todayISO();persist();toast("Cliente movido para a etapa "+st);clientView(c);scrollTo(0,0)};
+ const apv=document.querySelector('[data-l="Aprovação formalizada"]');if(apv){const upd=()=>{if(!free&&!c.cs[1]?.["Link da proposta"]){adv.textContent="Aguardando a proposta do CS";adv.disabled=true;return}const no=apv.value==="Não";adv.textContent=no?"Mover para Leads":"Avançar → etapa 3";adv.classList.toggle("red",no);if(no||free)adv.disabled=false;else adv.disabled=!(crit&&crit.checked)};apv.onchange=upd;upd()}
  const doSave=async()=>{collect();c.kmlExp=c.kmlExp||{};
   try{toast("Enviando arquivo…");await flush();
    for(const e of document.querySelectorAll("[data-kx]")){const f=e.files[0];if(!f)continue;c.kmlExp[e.dataset.kx]=await uploadAreaFile(c.id,f);c.ans[i][e.dataset.kx]=f.name}
    const k=$("#kmlUp");if(k&&k.files[0])await takeKml(c,k.files[0]);
   }catch(err){toast("Não foi possível enviar o arquivo: "+(err.message||err));return false}c.upd=todayISO();c.vAt=new Date().toISOString();const ms=processOffers(db,c,seller);persist();ms.forEach((m,k)=>setTimeout(()=>toast(m),k*2400));return true};
- const sv=$("#saveSt");if(sv)sv.onclick=async()=>{if(!await doSave())return;toast("Etapa salva");clientView(c)};
- adv.onclick=async()=>{if(i===1&&!c.cs[1]?.["Link da proposta"]){toast("A proposta ainda não foi anexada pelo CS");return}if(!await doSave())return;
-  if(i===0&&!c.kml){toast("Anexe o arquivo da área antes de avançar");return}
-  if(i===1&&c.ans[1]["Aprovação formalizada"]==="Não"){Object.assign(c,{status:"lead",leadOrigem:"Proposta recusada (1ª oferta)",leadMotivo:c.ans[1]["Motivo da recusa (se não)"]||"",leadDate:todayISO()});persist();toast("Proposta recusada: cliente movido para Leads");openId=null;render();return}
-  if(i===5&&(!c.ans[5]["Oferta de expansão"]||c.ans[5]["Oferta de expansão"]==="—")){toast("Registre a oferta de expansão antes de avançar");return}
-  if(i===5&&c.ans[5]["Oferta de expansão"]==="Aceitou"&&!c.kmlExp["KML das novas áreas"]){toast("Anexe o arquivo das novas áreas para fechar a expansão");return}
+ const sv=$("#saveSt");if(sv)sv.onclick=async()=>{if(!await doSave())return;if(!isActive(c)){openId=null;tab="fin";render();scrollTo(0,0);return}toast("Etapa salva");clientView(c)};
+ adv.onclick=async()=>{if(!free&&i===1&&!c.cs[1]?.["Link da proposta"]){toast("A proposta ainda não foi anexada pelo CS");return}if(!await doSave())return;
+  if(!isActive(c)){openId=null;tab="fin";render();scrollTo(0,0);return}
+  if(!free&&i===0&&!c.kml){toast("Anexe o arquivo da área antes de avançar");return}
+  if(i===1&&c.ans[1]["Aprovação formalizada"]==="Não"){Object.assign(c,{status:"lead",leadOrigem:"Proposta recusada (1ª oferta)",leadMotivo:c.ans[1]["Motivo da recusa (se não)"]||"",leadDate:todayISO()});persist();toast("Proposta recusada: cliente movido para Leads");openId=null;tab="fin";render();return}
+  if(!free&&i===5&&(!c.ans[5]["Oferta de expansão"]||c.ans[5]["Oferta de expansão"]==="—")){toast("Registre a oferta de expansão antes de avançar");return}
+  if(!free&&i===5&&c.ans[5]["Oferta de expansão"]==="Aceitou"&&!c.kmlExp["KML das novas áreas"]){toast("Anexe o arquivo das novas áreas para fechar a expansão");return}
   c.stage=c.stage<8?c.stage+1:3;c.hist.push({stage:c.stage,date:todayISO(),by:seller});persist();toast(i===7?"Novo ciclo: volta à etapa 3":"Avançou para a etapa "+c.stage);clientView(c);scrollTo(0,0)};
  $("#addRec").onclick=async()=>{collect();const title=$("#rTitle").value.trim(),text=$("#rText").value.trim();const fl=[...$("#rFiles").files];
   if(!fl.length&&!text){toast("Adicione um anexo ou uma observação");return}

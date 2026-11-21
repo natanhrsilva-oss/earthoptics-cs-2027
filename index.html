@@ -98,6 +98,8 @@ td.c,th.c{text-align:center}td.r,th.r{text-align:right}
 .doc{font-size:11.5px;font-weight:600;color:#0b6fa0;margin-left:4px;white-space:nowrap}
 .bar.sel .l{color:var(--or);font-weight:700}
 .dlk{color:#0b6fa0;font-weight:600;word-break:break-all}
+.mv{margin-left:auto;font-size:11.5px;font-weight:600}
+th[data-arrow]::after{content:attr(data-arrow);font-size:10px}
 .legend{font-size:11.5px;color:var(--mut);margin:0 0 6px;display:flex;align-items:center;gap:5px;flex-wrap:wrap}.dot{width:9px;height:9px;border-radius:50%;display:inline-block}.dot.r{background:#b3261e}.dot.o{background:var(--or);margin-left:8px}
 .needbox{background:#fbe9e7;border-left:4px solid #b3261e;padding:8px 12px;border-radius:8px;margin-top:10px;font-size:13px;display:flex;justify-content:space-between;align-items:center;gap:10px}
 .chip.won{background:#9fc55a;color:#274820}.chip.rc{background:#ebe3df;color:#622a10}
@@ -105,7 +107,7 @@ td.c,th.c{text-align:center}td.r,th.r{text-align:right}
 .meta{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
 .st{border:1px solid #e3ddd8;border-radius:10px;margin:10px 0;background:#fff;overflow:hidden}
 .st>summary{padding:10px 14px;cursor:pointer;font-weight:700;color:var(--g);display:flex;gap:8px;align-items:center}
-.st.cur>summary{background:#fdf3ea}.st.fut>summary{color:#aaa}
+.st.cur>summary{background:#fdf3ea}.st.fut>summary{color:#5d6f5f}
 .st .in{padding:4px 14px 14px;display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .st .in h4{margin:8px 0 4px;font-size:12px;color:var(--g2);text-transform:uppercase;letter-spacing:.06em}
 .ans{font-size:12.5px;background:#faf7f5;border-radius:8px;padding:6px 10px}.ans span{color:var(--mut)}
@@ -177,7 +179,7 @@ function propDeadline(c){if(!c.kmlAt)return null;const dl=new Date(new Date(c.km
 function propValue(c){return num(c.cs[1]?.["Valor da proposta (R$)"])}
 function closedValue(c){return num(c.ans[2]?.["Valor final (R$)"])||propValue(c)}
 function samples(c){return num(c.cs[1]?.["Nº de amostras"])}
-function alertsOf(db){const a=[];db.clients.filter(c=>c.status!=="lead").forEach(c=>{const n=days(c);const p=propDeadline(c);
+function alertsOf(db){const a=[];db.clients.filter(isActive).forEach(c=>{const n=days(c);const p=propDeadline(c);
  if(c.stage===2&&p&&!p.done&&p.left<0)a.push([c,`Proposta atrasada: prazo de 48 h vencido há ${Math.round(-p.left)} h`]);
  else if(c.stage===2&&p&&!p.done)a.push([c,`Proposta vence em ${Math.round(p.left)} h`]);
  else if(c.stage===2&&n>14)a.push([c,`Proposta sem resposta há ${n} dias`]);
@@ -186,22 +188,28 @@ function alertsOf(db){const a=[];db.clients.filter(c=>c.status!=="lead").forEach
  else if(n>21)a.push([c,`Sem atualização há ${n} dias`])});return a}
 /* Ofertas de novas áreas: [índice da etapa, campo da oferta, campo do KML, momento] */
 const OFFERS=[[5,"Oferta de expansão","KML das novas áreas","entrega técnica"],[6,"D+7 · oferta de orçamento novas áreas","D+7 · KML das novas áreas","D+7"],[6,"Colheita · oferta de orçamento novas áreas","Colheita · KML das novas áreas","colheita"]];
-const baseName=n=>n.replace(/\s+RECOMPRA$/,"");
+const baseName=n=>n.replace(/\s+RECOMPRA(\s+\d+)?$/,"");
+/* próximo nome de recompra: "Nome RECOMPRA", depois "Nome RECOMPRA 2", "Nome RECOMPRA 3"... */
+function recompraName(db,c){const b=baseName(c.nome);let k=0;db.clients.forEach(x=>{if(baseName(x.nome)!==b)return;const m=x.nome.match(/RECOMPRA(?:\s+(\d+))?$/);if(m)k=Math.max(k,m[1]?+m[1]:1)});return b+" RECOMPRA"+(k?" "+(k+1):"")}
+const lnk=u=>!u?"":/^[a-z][\w+.-]*:/i.test(u)?u:"https://"+u;
+const isActive=c=>!c.status||c.status==="ativo";
 function newId(db){return Date.now()*1000+Math.floor(Math.random()*1000)}
 function spawnRecompra(db,c,o){const now=new Date().toISOString();const id=newId(db);
- const n={id,nome:baseName(c.nome)+" RECOMPRA",seller:c.seller,sellerId:c.sellerId,tipo:c.tipo||"",uf:c.uf,stage:1,upd:todayISO(),geo:c.geo,plat:c.plat,sf:c.sf,kml:null,kmlAt:null,agencia:c.agencia||"",ans:{0:{...(c.ans[0]||{})}},cs:{},hist:[],status:"ativo",parent:c.id,...o};
+ const n={id,nome:recompraName(db,c),seller:c.seller,sellerId:c.sellerId,tipo:c.tipo||"",uf:c.uf,stage:1,upd:todayISO(),geo:c.geo,plat:c.plat,sf:c.sf,kml:null,kmlAt:null,agencia:c.agencia||"",ans:{0:{...(c.ans[0]||{})}},cs:{},hist:[],status:"ativo",parent:c.id,...o};
  n.hist.push({stage:n.stage,date:todayISO(),by:o.by||c.seller});db.clients.push(n);return n}
 /* Depois de salvar uma etapa no caderno: cria RECOMPRA (aceite + KML) ou lead RECOMPRA (recusa final) */
 function processOffers(db,c,by){const msgs=[];c.spawn=c.spawn||{};c.kmlExp=c.kmlExp||{};
  OFFERS.forEach(([i,off,kl,when])=>{const v=c.ans[i]?.[off];if(c.spawn[off])return;
   if(v==="Aceitou"&&c.kmlExp[kl]){const k=c.kmlExp[kl];const n=spawnRecompra(db,c,{stage:2,kml:{name:k.name,type:k.type,size:k.size,path:k.path,at:k.at},kmlAt:k.at,geo:k.geo||c.geo,origem:"Expansão aceita no "+when,by});
-   c.spawn[off]=n.id;c.won=true;msgs.push(`Cliente ganho: "${n.nome}" criado na etapa 2`)}
-  if(v==="Recuou"&&when==="colheita"){const n=spawnRecompra(db,c,{status:"lead",leadOrigem:"Recompra recusada na colheita",leadMotivo:c.ans[i]["Motivo (se recusou na colheita)"]||"",leadDate:todayISO(),by});c.spawn[off]=n.id;msgs.push(`Recompra recusada: "${n.nome}" foi para Leads`)}});
- if(c.ans[7]?.["Resultado"]==="Perdeu"&&!c.spawn["Resultado"]){const n=spawnRecompra(db,c,{status:"lead",leadOrigem:"Recompra recusada na recorrência",leadMotivo:c.ans[7]["Motivo da perda"]||"",leadDate:todayISO(),by});c.spawn["Resultado"]=n.id;msgs.push(`Recompra recusada: "${n.nome}" foi para Leads`)}
+   c.spawn[off]=n.id;c.won=true;finalize(c,"Recompra · expansão aceita no "+when,"");msgs.push(`Cliente ganho: "${n.nome}" criado na etapa 2. "${c.nome}" foi para Finalizados`)}
+  if(v==="Recuou"&&when==="colheita"){c.spawn[off]=-1;finalize(c,"Não renovou · recusou na colheita",c.ans[i]["Motivo (se recusou na colheita)"]||"");msgs.push(`"${c.nome}" foi para Finalizados (não renovou)`)}});
+ if(c.ans[7]?.["Resultado"]==="Perdeu"&&!c.spawn["Resultado"]){c.spawn["Resultado"]=-1;finalize(c,"Não renovou · fim do ciclo",c.ans[7]["Motivo da perda"]||"");msgs.push(`"${c.nome}" foi para Finalizados (não renovou)`)}
  return msgs}
+/* finalizado: sai da jornada, vai para Finalizados no caderno e para Leads no painel */
+function finalize(c,origem,motivo){Object.assign(c,{status:"finalizado",leadOrigem:origem,leadMotivo:motivo,leadDate:todayISO()})}
 /* Quem precisa responder: CS (vermelho) ou vendedor (laranja) */
 const CHECKS5=["Contato 1 · Introdução à metagenômica","Contato 2 · Books","Contato 3 · Como ler os resultados","Laudo pronto"];
-function needsCS(c){if(c.status==="lead")return "";const cs=c.cs||{};
+function needsCS(c){if(!isActive(c))return "";const cs=c.cs||{};
  if(c.stage<=2&&c.kml&&!cs[1]?.["Link da proposta"])return "Enviar proposta (48 h)";
  if(c.stage===4&&(!cs[3]?.["Data prevista da coleta"]||!cs[3]?.["Empresa amostradora"]))return "Definir coleta e amostrador";
  if(c.stage===4&&!cs[3]?.["Coleta concluída"])return "Confirmar a coleta";
@@ -210,7 +218,7 @@ function needsCS(c){if(c.status==="lead")return "";const cs=c.cs||{};
  if(c.stage===5&&!CHECKS5.every(k=>cs[4]?.[k]))return "Fazer contatos e liberar laudo";
  if(c.stage===5&&!cs[4]?.["Entrega técnica marcada para"])return "Marcar a entrega técnica";
  if(c.vAt&&(!c.csAt||c.vAt>c.csAt))return "Nova atualização do vendedor";return ""}
-function needsSeller(c){if(c.status==="lead"||needsCS(c))return "";const a=c.ans||{};
+function needsSeller(c){if(!isActive(c)||needsCS(c))return "";const a=c.ans||{};
  if(c.stage===1&&!c.kml)return "Aguardando KML do vendedor";
  if(c.stage===2&&(!a[1]?.["Aprovação formalizada"]||a[1]["Aprovação formalizada"]==="—"))return "Aguardando aprovação do cliente";
  if(c.stage===3&&!a[2]?.["Valor final (R$)"])return "Aguardando dados fiscais";
@@ -234,7 +242,7 @@ function renderRecords(db,cid,stage){
 }
 function csInfoHTML(db,c,i){const f=CSF[i];const v=c.cs[i]||{};const msg=c.cs[i]?.["Mensagem para o vendedor"];
  const rows=f.map(([lab,t])=>{let val=v[lab];if(t==="check")return `<div class="ck ${val?"on":""}">${val?"✔":"○"} ${esc(lab)} ${val?docLinks(lab):""}</div>`;
-  if(!val)return "";if(t==="url")return `<div><span>${esc(lab)}:</span> <a href="${esc(val)}" target="_blank">abrir</a></div>`;
+  if(!val)return "";if(t==="url")return `<div><span>${esc(lab)}:</span> <a href="${esc(lnk(val))}" target="_blank" rel="noopener">abrir</a></div>`;
   if(t==="sampler")val=samplerName(db,val);if(t==="date")val=fmtDate(val);if(lab.includes("R$"))val=brl(val);
   return `<div><span>${esc(lab)}:</span> ${esc(val)}</div>`}).join("");
  const due=i===4&&analysisDue(c)?`<div><span>Prazo da análise:</span> <b>${fmtDate(analysisDue(c))}</b> (4 semanas após a chegada)</div>`:"";
@@ -360,16 +368,27 @@ async function uploadFile(cid,rid,k,f){const blob=await (await fetch(f.data)).bl
 document.addEventListener("visibilitychange",async()=>{if(document.visibilityState!=="visible"||!ME||Date.now()-LOADED_AT<20000)return;
  const a=document.activeElement;if(a&&/INPUT|TEXTAREA|SELECT/.test(a.tagName))return;await flush();try{db=await loadDb();render()}catch(e){}});
 
-let listOpen=true, db={clients:[],records:[],consultorias:[],samplers:[]}, uEdit=null, uAct=null, agEdit=null, view="painel", filterStage=null, selId=null, fSeller="", fq="";
+let editAns=null, listOpen=true, db={clients:[],records:[],consultorias:[],samplers:[]}, uEdit=null, uAct=null, agEdit=null, view="painel", filterStage=null, selId=null, fSeller="", fq="";
 const $=s=>document.querySelector(s);
 function toast(t){const e=$("#toast");e.textContent=t;e.style.display="block";clearTimeout(toast.t);toast.t=setTimeout(()=>e.style.display="none",2200)}
 $("#out").onclick=logout;
 const SELLERS_P=()=>PROFILES.filter(p=>p.ativo||db.clients.some(c=>c.sellerId===p.id));
 document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{view=b.dataset.v;render()});
+/* ordenar qualquer tabela clicando no título da coluna (1º clique: crescente; 2º: decrescente) */
+const SORT={};
+function sortKey(td){const v=td.dataset.v;if(v!==undefined)return isNaN(+v)?v:+v;const t=td.innerText.trim();
+ if(/^R\$/.test(t))return +t.replace(/[^\d,-]/g,"").replace(",",".")||0;if(/^\d{2}\/\d{2}\/\d{4}/.test(t)){const [d,m,y]=t.slice(0,10).split("/");return y+m+d}
+ if(t==="hoje")return 0;const h=t.match(/^há (\d+) dia/);if(h)return +h[1];if(t==="·"||t==="—"||t==="")return -Infinity;if(/^-?[\d.,]+%?$/.test(t))return +t.replace(/\./g,"").replace(",",".").replace("%","");return t.toLowerCase()}
+function sortTables(){document.querySelectorAll("#main table").forEach((tb,ti)=>{const rows=[...tb.querySelectorAll("tr")];const head=rows.shift();if(!head||!rows.length)return;
+ const key=view+":"+ti;const ths=[...head.children];
+ const apply=()=>{const s=SORT[key];ths.forEach((th,k)=>{th.dataset.arrow=s&&s.col===k?(s.dir>0?" ▲":" ▼"):""});if(!s)return;
+  rows.sort((a,b)=>{const x=sortKey(a.children[s.col]||a),y=sortKey(b.children[s.col]||b);return (x>y?1:x<y?-1:0)*s.dir}).forEach(r=>r.parentNode.appendChild(r))};
+ ths.forEach((th,k)=>{if(!th.textContent.trim())return;th.style.cursor="pointer";th.title="Ordenar";th.onclick=()=>{const s=SORT[key];SORT[key]={col:k,dir:s&&s.col===k?-s.dir:1};apply()}});apply()})}
+new MutationObserver(()=>{clearTimeout(sortTables.t);sortTables.t=setTimeout(sortTables,0)}).observe(document.getElementById("main"),{childList:true});
 function render(){document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.v===view));({painel,clientes,leads,amostradores,consultorias,usuarios})[view]()}
 function goClient(id){selId=id;view="clientes";render();scrollTo(0,0)}
 
-const act=()=>db.clients.filter(c=>c.status!=="lead");
+const act=()=>db.clients.filter(isActive);
 function painel(){
  const C=act();
  const fech=C.filter(c=>c.stage>=3&&closedValue(c)>0), abert=C.filter(c=>c.stage===2&&propValue(c)>0);
@@ -410,7 +429,7 @@ function painel(){
  </table></div>
  <h2>Clientes ${filterStage?`na etapa ${filterStage} · <span class="link" id="clr">limpar filtro</span>`:""}</h2>
  <div class="card"><table><tr><th>Cliente</th><th>Vendedor</th><th>Agência</th><th>UF</th><th>Etapa</th><th class="r">Valor da proposta</th><th>Atualização</th><th>Links</th></tr>
- ${list.map(c=>`<tr><td><span class="link" data-open="${c.id}">${esc(c.nome)}</span></td><td>${esc(c.seller)}</td><td>${esc(agName(db,c.agencia))||"—"}</td><td>${esc(c.uf)}</td><td><span class="chip ${c.stage===6?"s6":""}">${c.stage}. ${STAGES[c.stage-1]}</span></td><td class="r">${propValue(c)?brl(propValue(c)):"—"}</td><td>${ago(c)}</td><td>${c.plat?`<a href="${esc(c.plat)}" target="_blank">Plataforma</a> `:""}${c.sf?`<a href="${esc(c.sf)}" target="_blank">Salesforce</a>`:""}${!c.plat&&!c.sf?'<span style="color:var(--clay);font-size:11.5px">cadastrar links</span>':""}</td></tr>`).join("")}
+ ${list.map(c=>`<tr><td><span class="link" data-open="${c.id}">${esc(c.nome)}</span></td><td>${esc(c.seller)}</td><td>${esc(agName(db,c.agencia))||"—"}</td><td>${esc(c.uf)}</td><td><span class="chip ${c.stage===6?"s6":""}">${c.stage}. ${STAGES[c.stage-1]}</span></td><td class="r">${propValue(c)?brl(propValue(c)):"—"}</td><td>${ago(c)}</td><td>${c.plat?`<a href="${esc(lnk(c.plat))}" target="_blank">Plataforma</a> `:""}${c.sf?`<a href="${esc(lnk(c.sf))}" target="_blank">Salesforce</a>`:""}${!c.plat&&!c.sf?'<span style="color:var(--clay);font-size:11.5px">cadastrar links</span>':""}</td></tr>`).join("")}
  </table></div>`;
  document.querySelectorAll(".bar").forEach(b=>b.onclick=()=>{filterStage=+b.dataset.st;painel()});
  const clr=$("#clr");if(clr)clr.onclick=()=>{filterStage=null;painel()};
@@ -429,12 +448,17 @@ function clientes(){
   <div class="legend"><span class="dot r"></span>${nCS} aguardando resposta do CS</div><div class="legend"><span class="dot o" style="margin-left:0"></span>${nV} aguardando vendedor</div>
   ${C.map(x=>{const r=needsCS(x),v=needsSeller(x);return `<div class="li ${x.id===selId?"on":""} ${r?"ncs":v?"nv":""}" data-id="${x.id}"><b>${esc(x.nome)}</b><small>${esc(x.seller)} · ${x.stage}. ${STAGES[x.stage-1]}</small>${r?`<em class="need r">${esc(r)}</em>`:v?`<em class="need o">${esc(v)}</em>`:""}</div>`}).join("")||"<p>Nenhum cliente.</p>"}</div>
  <div>${c?detail(c):""}</div></div>`;
- document.querySelectorAll(".li").forEach(e=>e.onclick=()=>{selId=+e.dataset.id;clientes()});
+ document.querySelectorAll(".li").forEach(e=>e.onclick=()=>{selId=+e.dataset.id;editAns=null;clientes()});
  $("#lstT").onclick=()=>{listOpen=!listOpen;clientes()};
  $("#fq").oninput=e=>{fq=e.target.value;const p=e.target.selectionStart;clientes();const i=$("#fq");i.focus();i.setSelectionRange(p,p)};
  $("#fs").onchange=e=>{fSeller=e.target.value;clientes()};
  if(c)bindDetail(c);
 }
+function vaFieldHTML(c,i,[lab,t,opt]){const v=(c.ans[i]||{})[lab]||"";
+ if(t==="sel")return `<label>${esc(lab)}</label><select data-va="${i}" data-l="${esc(lab)}">${opt.map(o=>`<option ${v===o?"selected":""}>${o}</option>`).join("")}</select>`;
+ if(t==="multi"){const sel=v.split(", ");return `<label>${esc(lab)}</label><div class="multi" data-va="${i}" data-l="${esc(lab)}" data-multi="1">${opt.map(o=>`<label><input type="checkbox" value="${o}" ${sel.includes(o)?"checked":""}> ${o}</label>`).join("")}</div>`}
+ if(t==="area")return `<label>${esc(lab)}</label><textarea data-va="${i}" data-l="${esc(lab)}">${esc(v)}</textarea>`;
+ const ty={num:"number",date:"date",email:"email",tel:"tel"}[t]||"text";return `<label>${esc(lab)}</label><input data-va="${i}" data-l="${esc(lab)}" type="${ty}" value="${esc(v)}">`}
 function csFieldHTML(c,i,[lab,t,opt]){const v=(c.cs[i]||{})[lab]||(i===3&&lab==="Link da plataforma EarthOptics"?c.plat:"")||(i===3&&lab==="Link do Salesforce"?c.sf:"")||(i===4?(c.cs[3]||{})[lab]:"")||"";const id=`cs_${i}_${lab.replace(/\W/g,"")}`;
  if(t==="check")return `<div class="ckrow"><input type="checkbox" data-cs="${i}" data-l="${esc(lab)}" ${v?"checked":""} id="${id}"><label for="${id}" style="margin:0">${esc(lab)}</label> ${docLinks(lab)}</div>`;
  if(t==="sel")return `<label>${esc(lab)}</label><select data-cs="${i}" data-l="${esc(lab)}">${["",...opt].map(o=>`<option ${v===o?"selected":""} value="${o}">${o||"—"}</option>`).join("")}</select>`;
@@ -442,14 +466,14 @@ function csFieldHTML(c,i,[lab,t,opt]){const v=(c.cs[i]||{})[lab]||(i===3&&lab===
  if(t==="sampler"){const r=rankSamplers(db,c);const best=r[0];
   return `<label>${esc(lab)}</label><select data-cs="${i}" data-l="${esc(lab)}"><option value="">—</option>${r.map(({s,d})=>`<option value="${s.id}" ${v===s.id?"selected":""}>${esc(s.nome)} · ${esc(s.cidade)}/${s.uf}${d!=null?" · "+Math.round(d)+" km":""}</option>`).join("")}</select>
   <div class="sug">${c.geo&&best?`⭐ Sugestão pelo KML: <b>${esc(best.s.nome)}</b> (${esc(best.s.cidade)}/${best.s.uf}), a ${Math.round(best.d)} km da área. <span class="link" id="useSug" data-id="${best.s.id}">usar</span>`:"Sem coordenadas do KML: a sugestão aparece quando o KML tem coordenadas."}</div>`}
- const ty={num:"number",date:"date",url:"url"}[t]||"text";
- return `<label>${esc(lab)}</label><input data-cs="${i}" data-l="${esc(lab)}" type="${ty}" value="${esc(v)}" ${t==="url"?'placeholder="https://..."':""}>`}
+ const ty={num:"number",date:"date"}[t]||"text";
+ return `<label>${esc(lab)}</label><input data-cs="${i}" data-l="${esc(lab)}" type="${ty}" value="${esc(v)}" ${t==="url"?'placeholder="cole o link"':""}>`}
 function detail(c){
  const p=propDeadline(c);
  return `<div class="card">
   <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
    <div><h2 style="margin:0">${esc(c.nome)}</h2><small style="color:var(--mut)">${esc(c.uf)}${c.agencia?" · "+esc(agName(db,c.agencia)):""} · atualizado ${ago(c)}</small></div>
-   <div>${c.plat?`<a class="btn" href="${esc(c.plat)}" target="_blank">Abrir na plataforma</a> `:""}${c.sf?`<a class="btn or" href="${esc(c.sf)}" target="_blank">Abrir no Salesforce</a>`:""}</div>
+   <div>${c.plat?`<a class="btn" href="${esc(lnk(c.plat))}" target="_blank">Abrir na plataforma</a> `:""}${c.sf?`<a class="btn or" href="${esc(lnk(c.sf))}" target="_blank">Abrir no Salesforce</a>`:""}</div>
   </div>
   ${needsCS(c)?`<div class="needbox"><span><b>Aguardando resposta do CS:</b> ${esc(needsCS(c))}</span>${needsCS(c)==="Nova atualização do vendedor"?'<button class="btn sm" id="ack">Marcar como respondido</button>':""}</div>`:""}
   ${c.won||c.parent?`<div style="margin-top:8px;font-size:12.5px">${c.won?'<span class="chip won">Expansão ganha</span> ':""}${Object.values(c.spawn||{}).map(id=>{const n=db.clients.find(x=>x.id===id);return n?`<span class="link" data-go="${n.id}">${esc(n.nome)}</span>${n.status==="lead"?" (lead)":""}`:""}).filter(Boolean).join(" · ")}${c.parent?` <span class="chip rc">Recompra</span> de <span class="link" data-go="${c.parent}">${esc((db.clients.find(x=>x.id===c.parent)||{}).nome||"")}</span>${c.origem?" · "+esc(c.origem):""}`:""}</div>`:""}
@@ -464,10 +488,10 @@ function detail(c){
   ${STAGES.map((s,i)=>{const a=c.ans[i]||{};const ent=Object.entries(a).filter(([k,v])=>v&&v!=="—");const recs=renderRecords(db,c.id,i+1);
    const cls=i+1<c.stage?"":i+1===c.stage?"cur":"fut";
    const dl=i===1&&p?`<div class="dl ${p.done?"ok":p.left<0?"late":"wait"}"><b>${p.done?"Proposta devolvida ao vendedor":p.left<0?"Prazo de 48 h vencido":"Prazo da proposta"}</b>KML recebido em ${fmtDT(c.kmlAt)} · prazo ${fmtDT(p.dl)}${p.done?"":p.left<0?` · atrasada ${Math.round(-p.left)} h`:` · faltam ${Math.round(p.left)} h`}</div>`:"";
-   return `<details class="st ${cls}" ${i+1===c.stage?"open":""}><summary>${i+1}. ${s} ${i+1<c.stage?'<span class="chip">concluída</span>':i+1===c.stage?'<span class="chip s6">em andamento</span>':""}</summary>
+   return `<details class="st ${cls}" ${i+1===c.stage?"open":""}><summary>${i+1}. ${s} ${i+1<c.stage?'<span class="chip">concluída</span>':i+1===c.stage?'<span class="chip s6">em andamento</span>':""}${i+1!==c.stage?`<span class="link mv" data-mv="${i+1}">mover cliente para esta etapa</span>`:""}</summary>
    <div class="in">
-    <div><h4>Do vendedor (caderno de campo)</h4>
-     ${ent.length?`<div class="ans">${ent.map(([k,v])=>`<div><span>${esc(k)}:</span> ${esc(v)}</div>`).join("")}</div>`:`<div class="ans"><span>${FIELDS[i].length?"Sem respostas ainda.":"Etapa conduzida pelo CS."}</span></div>`}
+    <div><h4>Do vendedor (caderno de campo) ${FIELDS[i].some(f=>!/kml|ag/.test(f[1]))&&editAns!==i?`<span class="link" data-eva="${i}" style="text-transform:none;letter-spacing:0;margin-left:6px">editar</span>`:""}</h4>
+     ${editAns===i?`<div class="csform">${FIELDS[i].filter(f=>!/kml|ag/.test(f[1])).map(f=>vaFieldHTML(c,i,f)).join("")}<div style="display:flex;gap:6px;margin-top:8px"><button class="btn sm" data-sva="${i}">Salvar respostas</button><button class="btn sm ghost" data-cva="1">Cancelar</button></div></div>`:ent.length?`<div class="ans">${ent.map(([k,v])=>`<div><span>${esc(k)}:</span> ${esc(v)}</div>`).join("")}</div>`:`<div class="ans"><span>${FIELDS[i].length?"Sem respostas ainda.":"Etapa conduzida pelo CS."}</span></div>`}
      ${recs?`<h4>Registros</h4>${recs}`:""}
     </div>
     <div><h4>Do CS (aparece para o vendedor)</h4>${dl}
@@ -480,12 +504,18 @@ function detail(c){
 function bindDetail(c){
  $("#dSave").onclick=()=>{c.sellerId=$("#dSeller").value;c.seller=pname(c.sellerId);c.agencia=$("#dAg").value;const st=+$("#dStage").value;if(st!==c.stage){c.stage=st;c.hist.push({stage:st,date:todayISO(),by:"CS (painel)"})}c.upd=todayISO();persist("Cliente atualizado");clientes()};
  document.querySelectorAll(".multi .all").forEach(a=>{const box=a.closest(".multi");const its=[...box.querySelectorAll("input:not(.all)")];a.onchange=()=>its.forEach(x=>x.checked=a.checked);its.forEach(x=>x.onchange=()=>a.checked=its.every(y=>y.checked))});
+ document.querySelectorAll("[data-mv]").forEach(b=>b.onclick=e=>{e.preventDefault();e.stopPropagation();const st=+b.dataset.mv;c.stage=st;c.hist.push({stage:st,date:todayISO(),by:"CS (painel)"});c.upd=todayISO();persist("Cliente movido para a etapa "+st);clientes()});
+ document.querySelectorAll("[data-eva]").forEach(b=>b.onclick=()=>{editAns=+b.dataset.eva;clientes()});
+ document.querySelectorAll("[data-cva]").forEach(b=>b.onclick=()=>{editAns=null;clientes()});
+ document.querySelectorAll("[data-sva]").forEach(b=>b.onclick=()=>{const i=+b.dataset.sva;c.ans[i]=c.ans[i]||{};
+  document.querySelectorAll(`[data-va="${i}"]`).forEach(e=>{c.ans[i][e.dataset.l]=e.dataset.multi?[...e.querySelectorAll("input:checked")].map(x=>x.value).join(", "):e.value});
+  editAns=null;c.upd=todayISO();c.csAt=new Date().toISOString();persist("Respostas da etapa "+(i+1)+" atualizadas");clientes()});
  const ack=$("#ack");if(ack)ack.onclick=()=>{c.csAt=new Date().toISOString();persist("Marcado como respondido");clientes()};
- document.querySelectorAll("[data-go]").forEach(e=>e.onclick=()=>{const n=db.clients.find(x=>x.id===+e.dataset.go);if(n&&n.status==="lead"){view="leads";render()}else goClient(+e.dataset.go)});
+ document.querySelectorAll("[data-go]").forEach(e=>e.onclick=()=>{const n=db.clients.find(x=>x.id===+e.dataset.go);if(n&&!isActive(n)){view="leads";render()}else goClient(+e.dataset.go)});
  const us=$("#useSug");if(us)us.onclick=()=>{const sel=document.querySelector('select[data-l="Empresa amostradora"]');sel.value=us.dataset.id;toast("Sugestão selecionada: salve a etapa 4")};
  document.querySelectorAll("[data-savecs]").forEach(b=>b.onclick=async()=>{const i=+b.dataset.savecs;c.cs[i]=c.cs[i]||{};const before={...c.cs[i]};
   for(const e of document.querySelectorAll(`[data-cs="${i}"]`)){const v=e.dataset.multi?[...e.querySelectorAll("input:checked:not(.all)")].map(x=>x.value).join(", "):e.type==="checkbox"?(e.checked?"1":""):e.value.trim();
-   if(e.type==="url"&&v&&!/^https?:\/\//.test(v)){toast("O link precisa começar com https://");return}c.cs[i][e.dataset.l]=v}
+   c.cs[i][e.dataset.l]=v}
   if(i===3){c.plat=c.cs[3]["Link da plataforma EarthOptics"]||"";c.sf=c.cs[3]["Link do Salesforce"]||""}
   c.upd=todayISO();c.csAt=new Date().toISOString();persist();await flush();
   const n=csNotice(c,i,before,c.cs[i]);let sent=false;
@@ -507,14 +537,14 @@ function amostradores(){
  document.querySelectorAll("[data-del]").forEach(e=>e.onclick=()=>{db.samplers=db.samplers.filter(s=>s.id!==e.dataset.del);persist("Empresa removida");amostradores()});
 }
 function leads(){
- const L=db.clients.filter(c=>c.status==="lead").sort((a,b)=>(b.leadDate||"").localeCompare(a.leadDate||""));
+ const L=db.clients.filter(c=>!isActive(c)).sort((a,b)=>(b.leadDate||"").localeCompare(a.leadDate||""));
  $("#main").innerHTML=`<h1>Leads</h1>
- <p style="color:var(--mut);margin-top:-6px">Clientes que saíram da jornada. <b>Proposta recusada</b>: o cliente recusou a primeira oferta (etapa 2). <b>Recompra recusada</b>: o cliente recusou as novas áreas na colheita ou na recorrência; o cliente original continua na jornada e o cartão “RECOMPRA” fica aqui para uma nova abordagem.</p>
+ <p style="color:var(--mut);margin-top:-6px">Clientes que saíram da jornada. <b>Proposta recusada</b>: recusou a primeira oferta (etapa 2). <b>Recompra</b>: fez a entrega técnica e comprou novas áreas; a nova compra segue como cartão “RECOMPRA”. <b>Não renovou</b>: chegou ao fim do ciclo sem nova compra. No caderno, os dois últimos aparecem em Finalizados.</p>
  <div class="card"><table><tr><th>Lead</th><th>Origem</th><th>Motivo</th><th>Vendedor</th><th>Agência</th><th>UF</th><th class="r">Valor da proposta</th><th>Desde</th><th></th></tr>
- ${L.map(c=>`<tr><td><b>${esc(c.nome)}</b></td><td><span class="chip ${/Recompra/.test(c.leadOrigem||"")?"rc":""}">${esc(c.leadOrigem||"")}</span></td><td>${esc(c.leadMotivo||"—")}</td><td>${esc(c.seller)}</td><td>${esc(agName(db,c.agencia))||"—"}</td><td>${esc(c.uf)}</td><td class="r">${propValue(c)?brl(propValue(c)):"—"}</td><td>${fmtDate(c.leadDate||c.upd)}</td><td><span class="link" data-re="${c.id}">reativar</span> · <span class="link" data-hist="${c.id}">histórico</span></td></tr>`).join("")||'<tr><td colspan="9">Nenhum lead.</td></tr>'}
- </table><small style="color:var(--mut)">Reativar devolve o lead à jornada: proposta recusada volta para a etapa 2; recompra volta para a etapa 1, para o vendedor enviar o KML das novas áreas.</small></div>`;
- document.querySelectorAll("[data-re]").forEach(e=>e.onclick=()=>{const c=db.clients.find(x=>x.id===+e.dataset.re);const rc=/Recompra/.test(c.leadOrigem||"");
-  c.status="ativo";c.stage=rc?1:2;if(!rc){c.ans[1]=c.ans[1]||{};c.ans[1]["Aprovação formalizada"]="—"}c.upd=todayISO();c.hist.push({stage:c.stage,date:todayISO(),by:"CS (reativado)"});persist("Lead reativado na etapa "+c.stage);leads()});
+ ${L.map(c=>`<tr><td><b>${esc(c.nome)}</b></td><td><span class="chip ${c.status==="finalizado"?"rc":""}">${esc(c.leadOrigem||"")}</span></td><td>${esc(c.leadMotivo||"—")}</td><td>${esc(c.seller)}</td><td>${esc(agName(db,c.agencia))||"—"}</td><td>${esc(c.uf)}</td><td class="r">${propValue(c)?brl(propValue(c)):"—"}</td><td>${fmtDate(c.leadDate||c.upd)}</td><td><span class="link" data-re="${c.id}">reativar</span> · <span class="link" data-hist="${c.id}">histórico</span></td></tr>`).join("")||'<tr><td colspan="9">Nenhum lead.</td></tr>'}
+ </table><small style="color:var(--mut)">Reativar devolve o cliente à jornada na etapa em que estava (proposta recusada volta para a etapa 2). Depois, mude a etapa livremente na aba Clientes.</small></div>`;
+ document.querySelectorAll("[data-re]").forEach(e=>e.onclick=()=>{const c=db.clients.find(x=>x.id===+e.dataset.re);const pr=c.status==="lead";
+  c.status="ativo";if(pr){c.stage=2;c.ans[1]=c.ans[1]||{};c.ans[1]["Aprovação formalizada"]="—"}c.upd=todayISO();c.hist.push({stage:c.stage,date:todayISO(),by:"CS (reativado)"});persist("Cliente reativado na etapa "+c.stage);leads()});
  document.querySelectorAll("[data-hist]").forEach(e=>e.onclick=()=>goClient(+e.dataset.hist));
 }
 function consultorias(){
