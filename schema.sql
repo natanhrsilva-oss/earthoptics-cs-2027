@@ -175,3 +175,28 @@ on conflict (id) do nothing;
 grant select on public.profiles to authenticated;
 grant select, insert, update, delete on public.clients, public.records, public.consultorias, public.samplers to authenticated;
 revoke all on public.profiles, public.clients, public.records, public.consultorias, public.samplers from anon;
+
+-- ---------- NOTIFICAÇÕES (CS → vendedor) ----------
+create table if not exists public.notifications(
+  id bigserial primary key,
+  seller_id uuid not null references public.profiles(id) on delete cascade,
+  client_id bigint references public.clients(id) on delete cascade,
+  stage int, title text not null, body text,
+  created_by uuid default auth.uid(),
+  created_at timestamptz not null default now(),
+  read_at timestamptz
+);
+alter table public.notifications enable row level security;
+drop policy if exists "notificações: ver" on public.notifications;
+drop policy if exists "notificações: criar" on public.notifications;
+drop policy if exists "notificações: ler" on public.notifications;
+drop policy if exists "notificações: excluir" on public.notifications;
+create policy "notificações: ver" on public.notifications for select to authenticated using (public.is_ativo() and (seller_id=auth.uid() or public.is_gestor()));
+create policy "notificações: criar" on public.notifications for insert to authenticated with check (public.is_gestor());
+create policy "notificações: ler" on public.notifications for update to authenticated using (seller_id=auth.uid() or public.is_gestor()) with check (seller_id=auth.uid() or public.is_gestor());
+create policy "notificações: excluir" on public.notifications for delete to authenticated using (public.is_gestor());
+grant select, insert, delete on public.notifications to authenticated;
+grant update (read_at) on public.notifications to authenticated;
+grant usage, select on sequence public.notifications_id_seq to authenticated;
+revoke all on public.notifications from anon;
+create index if not exists notifications_seller_idx on public.notifications(seller_id, created_at desc);

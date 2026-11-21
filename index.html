@@ -89,12 +89,14 @@ tr:nth-child(even) td{background:#faf7f5}
 td.c,th.c{text-align:center}td.r,th.r{text-align:right}
 .alert{padding:8px 10px;border-left:4px solid var(--clay);background:#fbf4f1;margin:6px 0;font-size:12.5px;cursor:pointer}
 .link{cursor:pointer;color:#0b87ba;font-weight:600}
-.cols{display:grid;grid-template-columns:290px 1fr;gap:16px;align-items:start}
+.cols{display:grid;grid-template-columns:290px 1fr;gap:16px;align-items:start}.cols.closed{grid-template-columns:1fr}
 .list{max-height:82vh;overflow:auto;position:sticky;top:10px}
 .li{padding:9px 10px;border-bottom:1px solid #eee;cursor:pointer}
 .li.on{background:var(--warm)}
 .li.ncs{border-left:4px solid #b3261e}.li.ncs b{color:#b3261e}.li.nv{border-left:4px solid var(--or)}
 .need{display:block;font-style:normal;font-size:11px;font-weight:700;margin-top:2px}.need.r{color:#b3261e}.need.o{color:#c86a1e}
+.doc{font-size:11.5px;font-weight:600;color:#0b6fa0;margin-left:4px;white-space:nowrap}
+.bar.sel .l{color:var(--or);font-weight:700}
 .dlk{color:#0b6fa0;font-weight:600;word-break:break-all}
 .legend{font-size:11.5px;color:var(--mut);margin:0 0 6px;display:flex;align-items:center;gap:5px;flex-wrap:wrap}.dot{width:9px;height:9px;border-radius:50%;display:inline-block}.dot.r{background:#b3261e}.dot.o{background:var(--or);margin-left:8px}
 .needbox{background:#fbe9e7;border-left:4px solid #b3261e;padding:8px 12px;border-radius:8px;margin-top:10px;font-size:13px;display:flex;justify-content:space-between;align-items:center;gap:10px}
@@ -129,11 +131,11 @@ try{if(innerWidth<700&&!sessionStorage.getItem("eo_painel")){location.replace("c
 </script>
 <script>
 const STAGES=["Prospecção e qualificação","Proposta de Bioprecisão","Fechamento e onboarding","Coleta e logística","Processamento","Entrega técnica","Acompanhamento","Recorrência e expansão"];
-const CRIT=["KML/SHP, contato e investigações do cliente recebidos","Proposta aprovada e formalizada com o cliente","Dados fiscais, valor final e treinamento definidos","100% das amostras recebidas em Campinas","Três contatos feitos, laudo pronto e entrega marcada","Resumo em 24 h, decisões no CRM e oferta registrada","Pesquisa, decisões e reoferta registradas","Nova proposta aprovada ou perda registrada"];
+const CRIT=["KML/SHP, contato e investigações do cliente recebidos","Proposta aprovada e formalizada com o cliente","Dados fiscais, valor final e treinamento definidos","Coleta concluída e amostras enviadas ao laboratório","Amostras no laboratório, três contatos feitos, laudo pronto e entrega marcada","Resumo em 24 h, decisões no CRM e oferta registrada","Pesquisa, decisões e reoferta registradas","Nova proposta aprovada ou perda registrada"];
 /* Campos do VENDEDOR por etapa (caderno). [] = etapa preenchida pelo CS */
 const CULTURAS=["Soja","Milho","Algodão","Cana-de-açúcar","Café","Feijão","Trigo","Sorgo","Pastagem","Hortifrúti","Outra"];
 const FIELDS=[
- [["Responsável","txt"],["Telefone","tel"],["E-mail","email"],["Serviços desejados","multi",["TruBio","Fertilidade","Amostragem"]],["KML ou Shapefile","kml"],["Últimas culturas do campo","multi",CULTURAS],["Área (ha)","num"],["Investigações do cliente","area"],["Possíveis manejos","area"]],
+ [["Responsável","txt"],["Telefone","tel"],["E-mail","email"],["Serviços desejados","multi",["TruBio","Fertilidade","Amostragem"]],["KML ou Shapefile","kml"],["Área (ha)","num"],["Investigações do cliente","area"],["Possíveis manejos","area"]],
  [["Proposta apresentada ao cliente em","date"],["Aprovação formalizada","sel",["—","Sim","Não"]],["Motivo da recusa (se não)","txt"]],
  [["Nome da empresa","txt"],["CNPJ ou CPF do produtor","txt"],["Inscrição estadual","txt"],["Endereço","area"],["E-mail fiscal","email"],["Valor final (R$)","num"],["Data para treinamento","date"]],
  [],
@@ -142,13 +144,21 @@ const FIELDS=[
  [["D+7 · visita de campo","area"],["D+7 · oferta de orçamento novas áreas","sel",["—","Aceitou","Recuou"]],["D+7 · KML das novas áreas","kmlx"],["D+15 · nota de recomendação (0–10)","num"],["D+15 · satisfação (1–5)","num"],["D+30 · decisões tomadas","area"],["Colheita · produtividade por zona","txt"],["Colheita · oferta de orçamento novas áreas","sel",["—","Aceitou","Recuou"]],["Colheita · KML das novas áreas","kmlx"],["Motivo (se recusou na colheita)","txt"]],
  [["Saúde da conta","sel",["Saudável","Atenção","Risco"]],["Caminho de proposta","sel",["Reamostragem","Mais área","TruBio → 360","Nova cultura","Outras fazendas","Subida de plano"]],["Resultado","sel",["Em negociação","Aprovou","Perdeu"]],["Motivo da perda","txt"]]
 ];
+/* Documentos de apoio da etapa 5 (pasta CS 2027 FINAL no Drive) */
+const DRV=id=>"https://drive.google.com/file/d/"+id+"/view";
+const DOCS5={"Contato 1 · Introdução à metagenômica":[["Introdução à metagenômica",DRV("151HthWYd_Gp10U8H13L7NeZ3oOglf01i")]],
+ "Contato 2 · Books":[["Book Biofertilidade",DRV("1-QKXl3ShhpDEk9LLcOzfsuhOrEQFtHlE")],["Book Patógenos",DRV("13AfkNnD4urZ4jQzQVKRcufSPap041OdV")]],
+ "Contato 3 · Como ler os resultados":[["Como acessar e ler os resultados",DRV("1TaiP3RisschNXIPPMSRJmi3jd0jAz96H")]]};
+const docLinks=lab=>(DOCS5[lab]||[]).map(([t,u])=>`<a class="doc" href="${u}" target="_blank" rel="noopener">📄 ${esc(t)}</a>`).join(" ");
+/* prazo da análise: 4 semanas após a chegada no laboratório */
+function analysisDue(c){const d=c.cs?.[4]?.["Data de chegada em Campinas"]||c.cs?.[3]?.["Data de chegada em Campinas"];if(!d)return null;const x=new Date(d+"T12:00:00");x.setDate(x.getDate()+28);return x.toISOString().slice(0,10)}
 /* Campos do CS por etapa (painel), vistos pelo vendedor no caderno */
 const CSF=[
  [],
  [["Link da proposta","url"],["Valor da proposta (R$)","num"],["Nº de amostras","num"],["Serviço","multi",["TruBio","Fertilidade","Amostragem"]]],
  [],
- [["Data prevista da coleta","date"],["Empresa amostradora","sampler"],["Data de chegada em Campinas","date"],["Amostras recebidas","sel",["—","Parcial","100% recebidas"]]],
- [["Contato 1 · Introdução à metagenômica","check"],["Contato 2 · Books","check"],["Contato 3 · Como ler os resultados","check"],["Laudo pronto","check"],["Entrega técnica marcada para","date"]],
+ [["Data prevista da coleta","date"],["Empresa amostradora","sampler"],["Coleta concluída","check"],["Link da plataforma EarthOptics","url"],["Link do Salesforce","url"]],
+ [["Data de chegada em Campinas","date"],["Amostras recebidas","sel",["—","Parcial","100% recebidas"]],["Contato 1 · Introdução à metagenômica","check"],["Contato 2 · Books","check"],["Contato 3 · Como ler os resultados","check"],["Laudo pronto","check"],["Entrega técnica marcada para","date"]],
  [],[],[]
 ];
 const TIPOS=["Key account","Consultoria","Grupo/parceiro","Produtor direto","Nova região"];
@@ -172,6 +182,7 @@ function alertsOf(db){const a=[];db.clients.filter(c=>c.status!=="lead").forEach
  else if(c.stage===2&&p&&!p.done)a.push([c,`Proposta vence em ${Math.round(p.left)} h`]);
  else if(c.stage===2&&n>14)a.push([c,`Proposta sem resposta há ${n} dias`]);
  else if(c.stage===4&&n>15)a.push([c,`Coleta atrasada há ${n} dias`]);
+ else if(c.stage===5&&analysisDue(c)&&!c.cs[4]?.["Laudo pronto"]&&analysisDue(c)<todayISO())a.push([c,`Análise passou do prazo (${fmtDate(analysisDue(c))})`]);
  else if(n>21)a.push([c,`Sem atualização há ${n} dias`])});return a}
 /* Ofertas de novas áreas: [índice da etapa, campo da oferta, campo do KML, momento] */
 const OFFERS=[[5,"Oferta de expansão","KML das novas áreas","entrega técnica"],[6,"D+7 · oferta de orçamento novas áreas","D+7 · KML das novas áreas","D+7"],[6,"Colheita · oferta de orçamento novas áreas","Colheita · KML das novas áreas","colheita"]];
@@ -193,7 +204,9 @@ const CHECKS5=["Contato 1 · Introdução à metagenômica","Contato 2 · Books"
 function needsCS(c){if(c.status==="lead")return "";const cs=c.cs||{};
  if(c.stage<=2&&c.kml&&!cs[1]?.["Link da proposta"])return "Enviar proposta (48 h)";
  if(c.stage===4&&(!cs[3]?.["Data prevista da coleta"]||!cs[3]?.["Empresa amostradora"]))return "Definir coleta e amostrador";
- if(c.stage===4&&cs[3]?.["Amostras recebidas"]!=="100% recebidas")return "Confirmar recebimento das amostras";
+ if(c.stage===4&&!cs[3]?.["Coleta concluída"])return "Confirmar a coleta";
+ if(c.stage===5&&!(cs[4]?.["Data de chegada em Campinas"]||cs[3]?.["Data de chegada em Campinas"]))return "Registrar chegada no laboratório";
+ if(c.stage===5&&(cs[4]?.["Amostras recebidas"]||cs[3]?.["Amostras recebidas"])!=="100% recebidas")return "Confirmar recebimento das amostras";
  if(c.stage===5&&!CHECKS5.every(k=>cs[4]?.[k]))return "Fazer contatos e liberar laudo";
  if(c.stage===5&&!cs[4]?.["Entrega técnica marcada para"])return "Marcar a entrega técnica";
  if(c.vAt&&(!c.csAt||c.vAt>c.csAt))return "Nova atualização do vendedor";return ""}
@@ -220,12 +233,27 @@ function renderRecords(db,cid,stage){
   ${r.text?`<div class="rt">${esc(r.text)}</div>`:""}${(r.files||[]).map(fileHTML).join("")}</div>`).join("");
 }
 function csInfoHTML(db,c,i){const f=CSF[i];const v=c.cs[i]||{};const msg=c.cs[i]?.["Mensagem para o vendedor"];
- const rows=f.map(([lab,t])=>{let val=v[lab];if(t==="check")return `<div class="ck ${val?"on":""}">${val?"✔":"○"} ${esc(lab)}</div>`;
+ const rows=f.map(([lab,t])=>{let val=v[lab];if(t==="check")return `<div class="ck ${val?"on":""}">${val?"✔":"○"} ${esc(lab)} ${val?docLinks(lab):""}</div>`;
   if(!val)return "";if(t==="url")return `<div><span>${esc(lab)}:</span> <a href="${esc(val)}" target="_blank">abrir</a></div>`;
   if(t==="sampler")val=samplerName(db,val);if(t==="date")val=fmtDate(val);if(lab.includes("R$"))val=brl(val);
   return `<div><span>${esc(lab)}:</span> ${esc(val)}</div>`}).join("");
- return rows||msg?`<div class="csbox"><div class="cst">Informações do CS</div>${rows}${msg?`<div class="msg">💬 ${esc(msg)}</div>`:""}</div>`:"";
+ const due=i===4&&analysisDue(c)?`<div><span>Prazo da análise:</span> <b>${fmtDate(analysisDue(c))}</b> (4 semanas após a chegada)</div>`:"";
+ return rows||msg?`<div class="csbox"><div class="cst">Informações do CS</div>${rows}${due}${msg?`<div class="msg">💬 ${esc(msg)}</div>`:""}</div>`:"";
 }
+
+/* Notificação para o vendedor quando o CS salva uma etapa */
+function csNotice(c,i,before,after){const ch=k=>(after[k]||"")!==(before[k]||"")&&after[k];const L=[];let title="";
+ if(i===1&&ch("Link da proposta")){title="Proposta pronta";L.push(`O CS anexou a proposta de Bioprecisão${after["Valor da proposta (R$)"]?" ("+brl(after["Valor da proposta (R$)"])+(after["Nº de amostras"]?", "+after["Nº de amostras"]+" amostras":"")+")":""}. Apresente ao cliente e formalize a aprovação.`)}
+ if(i===3&&(ch("Data prevista da coleta")||ch("Empresa amostradora"))){title=title||"Coleta agendada";L.push(`Coleta prevista para ${fmtDate(after["Data prevista da coleta"])||"data a definir"}${after["Empresa amostradora"]?" com "+samplerName(db,after["Empresa amostradora"]):""}.`)}
+ if(i===3&&ch("Coleta concluída")){title=title||"Coleta concluída";L.push("A coleta foi concluída e as amostras seguem para o laboratório.")}
+ if(i===4&&ch("Data de chegada em Campinas")){title=title||"Amostras no laboratório";L.push(`Amostras chegaram ao laboratório em ${fmtDate(after["Data de chegada em Campinas"])}. Prazo da análise: ${fmtDate(analysisDue({cs:{4:after}}))}.`)}
+ if(i===4&&ch("Amostras recebidas"))L.push("Recebimento: "+after["Amostras recebidas"]+".");
+ CHECKS5.slice(0,3).forEach(k=>{if(i===4&&ch(k))L.push(k+" feito.")});
+ if(i===4&&ch("Laudo pronto")){title="Resultados prontos";L.push("O laudo está pronto. Prepare a entrega técnica com o CS.")}
+ if(i===4&&ch("Entrega técnica marcada para")){title=title||"Entrega técnica marcada";L.push(`Entrega técnica marcada para ${fmtDate(after["Entrega técnica marcada para"])}.`)}
+ if(ch("Mensagem para o vendedor")){title=title||"Mensagem do CS";L.push("💬 "+after["Mensagem para o vendedor"])}
+ if(!L.length){const k=Object.keys(after).filter(ch);if(!k.length)return null;L.push("Atualizado: "+k.join(", ")+".")}
+ return {title:(title||"Atualização do CS")+" · "+c.nome,body:L.join(" "),stage:i+1}}
 
 /* ===== Nuvem: Supabase (login, dados, anexos) ===== */
 const sb=supabase.createClient(EO_CONFIG.url,EO_CONFIG.anonKey);
@@ -332,7 +360,7 @@ async function uploadFile(cid,rid,k,f){const blob=await (await fetch(f.data)).bl
 document.addEventListener("visibilitychange",async()=>{if(document.visibilityState!=="visible"||!ME||Date.now()-LOADED_AT<20000)return;
  const a=document.activeElement;if(a&&/INPUT|TEXTAREA|SELECT/.test(a.tagName))return;await flush();try{db=await loadDb();render()}catch(e){}});
 
-let db={clients:[],records:[],consultorias:[],samplers:[]}, uEdit=null, uAct=null, agEdit=null, view="painel", filterStage=null, selId=null, fSeller="", fq="";
+let listOpen=true, db={clients:[],records:[],consultorias:[],samplers:[]}, uEdit=null, uAct=null, agEdit=null, view="painel", filterStage=null, selId=null, fSeller="", fq="";
 const $=s=>document.querySelector(s);
 function toast(t){const e=$("#toast");e.textContent=t;e.style.display="block";clearTimeout(toast.t);toast.t=setTimeout(()=>e.style.display="none",2200)}
 $("#out").onclick=logout;
@@ -372,7 +400,7 @@ function painel(){
  <div class="grid2">
   <div class="card"><h2 style="margin-top:0">Clientes por etapa</h2>
    <div class="barh"><div style="width:190px">Etapa</div><div style="flex:1"></div><div style="width:26px">Qtd</div><div style="width:110px;text-align:right">Valor da proposta</div></div>
-   ${STAGES.map((s,i)=>{const cs=C.filter(c=>c.stage===i+1);const n=cs.length;const v=sum(cs,propValue);return `<div class="bar" data-st="${i+1}"><div class="l">${i+1}. ${s}</div><div class="t"><div class="f" style="width:${n/max*100}%;${i===5?"background:var(--or)":""}"></div></div><div class="n">${n}</div><div class="val">${v?brl(v):"—"}</div></div>`}).join("")}
+   ${STAGES.map((s,i)=>{const cs=C.filter(c=>c.stage===i+1);const n=cs.length;const v=sum(cs,propValue);return `<div class="bar ${filterStage===i+1?"sel":""}" data-st="${i+1}"><div class="l">${i+1}. ${s}</div><div class="t"><div class="f" style="width:${n/max*100}%;${filterStage===i+1?"background:var(--or)":""}"></div></div><div class="n">${n}</div><div class="val">${v?brl(v):"—"}</div></div>`}).join("")}
    <small style="color:var(--mut)">Clique numa etapa para filtrar a lista abaixo.</small></div>
   <div class="card"><h2 style="margin-top:0">Alertas</h2>${al.map(([c,t])=>`<div class="alert" data-id="${c.id}"><b>${esc(c.nome)}</b> · ${t} · ${esc(c.seller)}</div>`).join("")||"<p>Nenhum alerta.</p>"}</div>
  </div>
@@ -396,18 +424,19 @@ function clientes(){
   .sort((a,b)=>(needsCS(b)?2:needsSeller(b)?1:0)-(needsCS(a)?2:needsSeller(a)?1:0));
  if(!selId&&C.length)selId=C[0].id;
  const c=db.clients.find(x=>x.id===selId);
- $("#main").innerHTML=`<h1>Clientes</h1><div class="cols">
- <div class="card list"><div class="filters"><input id="fq" placeholder="Buscar" value="${esc(fq)}"><select id="fs"><option value="">Todos</option><option value="__cs" ${fSeller==="__cs"?"selected":""}>● Aguardando CS (${nCS})</option><option value="__v" ${fSeller==="__v"?"selected":""}>● Aguardando vendedor (${nV})</option>${SELLERS_P().map(s=>`<option value="${s.id}" ${s.id===fSeller?"selected":""}>${esc(s.nome)}</option>`).join("")}</select></div>
+ $("#main").innerHTML=`<h1>Clientes ${listOpen?"":`<button class="btn sm ghost" id="lstT" style="vertical-align:middle;margin-left:8px">☰ Mostrar lista (${C.length})</button>`}</h1><div class="cols ${listOpen?"":"closed"}">
+ <div class="card list" ${listOpen?"":'style="display:none"'}><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><b style="color:var(--g)">Lista de clientes</b><span class="link" id="lstT">◀ recolher</span></div><div class="filters"><input id="fq" placeholder="Buscar" value="${esc(fq)}"><select id="fs"><option value="">Todos</option><option value="__cs" ${fSeller==="__cs"?"selected":""}>● Aguardando CS (${nCS})</option><option value="__v" ${fSeller==="__v"?"selected":""}>● Aguardando vendedor (${nV})</option>${SELLERS_P().map(s=>`<option value="${s.id}" ${s.id===fSeller?"selected":""}>${esc(s.nome)}</option>`).join("")}</select></div>
   <div class="legend"><span class="dot r"></span>${nCS} aguardando resposta do CS</div><div class="legend"><span class="dot o" style="margin-left:0"></span>${nV} aguardando vendedor</div>
   ${C.map(x=>{const r=needsCS(x),v=needsSeller(x);return `<div class="li ${x.id===selId?"on":""} ${r?"ncs":v?"nv":""}" data-id="${x.id}"><b>${esc(x.nome)}</b><small>${esc(x.seller)} · ${x.stage}. ${STAGES[x.stage-1]}</small>${r?`<em class="need r">${esc(r)}</em>`:v?`<em class="need o">${esc(v)}</em>`:""}</div>`}).join("")||"<p>Nenhum cliente.</p>"}</div>
  <div>${c?detail(c):""}</div></div>`;
  document.querySelectorAll(".li").forEach(e=>e.onclick=()=>{selId=+e.dataset.id;clientes()});
+ $("#lstT").onclick=()=>{listOpen=!listOpen;clientes()};
  $("#fq").oninput=e=>{fq=e.target.value;const p=e.target.selectionStart;clientes();const i=$("#fq");i.focus();i.setSelectionRange(p,p)};
  $("#fs").onchange=e=>{fSeller=e.target.value;clientes()};
  if(c)bindDetail(c);
 }
-function csFieldHTML(c,i,[lab,t,opt]){const v=(c.cs[i]||{})[lab]||"";const id=`cs_${i}_${lab.replace(/\W/g,"")}`;
- if(t==="check")return `<div class="ckrow"><input type="checkbox" data-cs="${i}" data-l="${esc(lab)}" ${v?"checked":""} id="${id}"><label for="${id}" style="margin:0">${esc(lab)}</label></div>`;
+function csFieldHTML(c,i,[lab,t,opt]){const v=(c.cs[i]||{})[lab]||(i===3&&lab==="Link da plataforma EarthOptics"?c.plat:"")||(i===3&&lab==="Link do Salesforce"?c.sf:"")||(i===4?(c.cs[3]||{})[lab]:"")||"";const id=`cs_${i}_${lab.replace(/\W/g,"")}`;
+ if(t==="check")return `<div class="ckrow"><input type="checkbox" data-cs="${i}" data-l="${esc(lab)}" ${v?"checked":""} id="${id}"><label for="${id}" style="margin:0">${esc(lab)}</label> ${docLinks(lab)}</div>`;
  if(t==="sel")return `<label>${esc(lab)}</label><select data-cs="${i}" data-l="${esc(lab)}">${["",...opt].map(o=>`<option ${v===o?"selected":""} value="${o}">${o||"—"}</option>`).join("")}</select>`;
  if(t==="multi"){const sel=v.split(", ");return `<label>${esc(lab)}</label><div class="multi" data-cs="${i}" data-l="${esc(lab)}" data-multi="1"><label style="background:var(--warm)"><input type="checkbox" class="all" ${opt.every(o=>sel.includes(o))?"checked":""}> Todos</label>${opt.map(o=>`<label><input type="checkbox" value="${o}" ${sel.includes(o)?"checked":""}> ${o}</label>`).join("")}</div>`}
  if(t==="sampler"){const r=rankSamplers(db,c);const best=r[0];
@@ -426,8 +455,6 @@ function detail(c){
   ${c.won||c.parent?`<div style="margin-top:8px;font-size:12.5px">${c.won?'<span class="chip won">Expansão ganha</span> ':""}${Object.values(c.spawn||{}).map(id=>{const n=db.clients.find(x=>x.id===id);return n?`<span class="link" data-go="${n.id}">${esc(n.nome)}</span>${n.status==="lead"?" (lead)":""}`:""}).filter(Boolean).join(" · ")}${c.parent?` <span class="chip rc">Recompra</span> de <span class="link" data-go="${c.parent}">${esc((db.clients.find(x=>x.id===c.parent)||{}).nome||"")}</span>${c.origem?" · "+esc(c.origem):""}`:""}</div>`:""}
   <div class="meta" style="margin-top:12px">
    <div><label>Vendedor responsável</label><select id="dSeller">${SELLERS_P().map(s=>`<option value="${s.id}" ${s.id===c.sellerId?"selected":""}>${esc(s.nome)}</option>`).join("")}</select></div>
-   <div><label>Link da plataforma EarthOptics</label><input id="dPlat" value="${esc(c.plat)}" placeholder="https://earthoptics.app/..."></div>
-   <div><label>Link do Salesforce</label><input id="dSf" value="${esc(c.sf)}" placeholder="https://...salesforce.com/..."></div>
    <div><label>Etapa atual</label><select id="dStage">${STAGES.map((s,i)=>`<option value="${i+1}" ${c.stage===i+1?"selected":""}>${i+1}. ${s}</option>`).join("")}</select></div>
    <div><label>Arquivos da área</label><div style="font-size:13px;padding-top:6px;line-height:1.6">${Object.entries(c.kmlExp||{}).map(([l,k])=>`<div>${dlLink(k)} <span style="color:var(--mut)">· ${esc(l)}</span></div>`).join("")}${c.kml?`<div>${dlLink(c.kml)} <span style="color:var(--mut)">· enviado ${c.kmlAt?fmtDT(c.kmlAt):""}</span></div>`:'<span style="color:var(--mut)">não anexado</span>'}</div></div>
    <div><label>Agência / consultoria</label><select id="dAg"><option value="">— Sem agência —</option>${db.consultorias.slice().sort((a,b)=>a.nome.localeCompare(b.nome)).map(a=>`<option value="${a.id}" ${a.id===c.agencia?"selected":""}>${esc(a.nome)}</option>`).join("")}</select></div>
@@ -444,24 +471,26 @@ function detail(c){
      ${recs?`<h4>Registros</h4>${recs}`:""}
     </div>
     <div><h4>Do CS (aparece para o vendedor)</h4>${dl}
-     <div class="csform">${CSF[i].map(f=>csFieldHTML(c,i,f)).join("")}
+     <div class="csform">${CSF[i].map(f=>csFieldHTML(c,i,f)).join("")}${i===4&&analysisDue(c)?`<div class="sug">⏱ Prazo da análise: <b>${fmtDate(analysisDue(c))}</b> (4 semanas após a chegada)</div>`:""}
       <label>Mensagem para o vendedor</label><textarea data-cs="${i}" data-l="Mensagem para o vendedor">${esc((c.cs[i]||{})["Mensagem para o vendedor"]||"")}</textarea>
       <button class="btn sm" data-savecs="${i}" style="margin-top:8px">Salvar etapa ${i+1}</button></div>
     </div>
    </div></details>`}).join("")}`;
 }
 function bindDetail(c){
- $("#dSave").onclick=()=>{const p=$("#dPlat").value.trim(),s=$("#dSf").value.trim();
-  if((p&&!/^https?:\/\//.test(p))||(s&&!/^https?:\/\//.test(s))){toast("Os links precisam começar com https://");return}
-  c.plat=p;c.sf=s;c.sellerId=$("#dSeller").value;c.seller=pname(c.sellerId);c.agencia=$("#dAg").value;const st=+$("#dStage").value;if(st!==c.stage){c.stage=st;c.hist.push({stage:st,date:todayISO(),by:"CS (painel)"})}c.upd=todayISO();persist("Cliente atualizado");clientes()};
+ $("#dSave").onclick=()=>{c.sellerId=$("#dSeller").value;c.seller=pname(c.sellerId);c.agencia=$("#dAg").value;const st=+$("#dStage").value;if(st!==c.stage){c.stage=st;c.hist.push({stage:st,date:todayISO(),by:"CS (painel)"})}c.upd=todayISO();persist("Cliente atualizado");clientes()};
  document.querySelectorAll(".multi .all").forEach(a=>{const box=a.closest(".multi");const its=[...box.querySelectorAll("input:not(.all)")];a.onchange=()=>its.forEach(x=>x.checked=a.checked);its.forEach(x=>x.onchange=()=>a.checked=its.every(y=>y.checked))});
  const ack=$("#ack");if(ack)ack.onclick=()=>{c.csAt=new Date().toISOString();persist("Marcado como respondido");clientes()};
  document.querySelectorAll("[data-go]").forEach(e=>e.onclick=()=>{const n=db.clients.find(x=>x.id===+e.dataset.go);if(n&&n.status==="lead"){view="leads";render()}else goClient(+e.dataset.go)});
  const us=$("#useSug");if(us)us.onclick=()=>{const sel=document.querySelector('select[data-l="Empresa amostradora"]');sel.value=us.dataset.id;toast("Sugestão selecionada: salve a etapa 4")};
- document.querySelectorAll("[data-savecs]").forEach(b=>b.onclick=()=>{const i=+b.dataset.savecs;c.cs[i]=c.cs[i]||{};
+ document.querySelectorAll("[data-savecs]").forEach(b=>b.onclick=async()=>{const i=+b.dataset.savecs;c.cs[i]=c.cs[i]||{};const before={...c.cs[i]};
   for(const e of document.querySelectorAll(`[data-cs="${i}"]`)){const v=e.dataset.multi?[...e.querySelectorAll("input:checked:not(.all)")].map(x=>x.value).join(", "):e.type==="checkbox"?(e.checked?"1":""):e.value.trim();
    if(e.type==="url"&&v&&!/^https?:\/\//.test(v)){toast("O link precisa começar com https://");return}c.cs[i][e.dataset.l]=v}
-  c.upd=todayISO();c.csAt=new Date().toISOString();persist(`Etapa ${i+1} salva e visível no caderno de campo`);clientes()});
+  if(i===3){c.plat=c.cs[3]["Link da plataforma EarthOptics"]||"";c.sf=c.cs[3]["Link do Salesforce"]||""}
+  c.upd=todayISO();c.csAt=new Date().toISOString();persist();await flush();
+  const n=csNotice(c,i,before,c.cs[i]);let sent=false;
+  if(n){const {error}=await sb.from("notifications").insert({seller_id:c.sellerId,client_id:c.id,stage:n.stage,title:n.title,body:n.body});sent=!error;if(error)toast("Etapa salva, mas a notificação falhou: "+error.message)}
+  toast(sent?`Etapa ${i+1} salva e vendedor notificado`:`Etapa ${i+1} salva`);clientes()});
 }
 
 function amostradores(){
