@@ -71,6 +71,7 @@ details.prev summary{font-weight:600;color:var(--g);font-size:13px;cursor:pointe
 .ans{font-size:12.5px;margin:6px 0}.ans span{color:var(--mut)}
 .search{margin-bottom:10px}
 .kml{font-size:12px;color:var(--g2)}
+.dlk{color:#0b6fa0;font-weight:600;text-decoration:none;word-break:break-all}
 .note{font-size:12.5px;color:var(--mut)}
 #auth{position:fixed;inset:0;background:var(--g);z-index:50;display:none;align-items:center;justify-content:center;padding:20px;overflow:auto}
 .authw{width:100%;max-width:380px;text-align:center;color:#ffffffaa}
@@ -147,7 +148,7 @@ function spawnRecompra(db,c,o){const now=new Date().toISOString();const id=newId
 /* Depois de salvar uma etapa no caderno: cria RECOMPRA (aceite + KML) ou lead RECOMPRA (recusa final) */
 function processOffers(db,c,by){const msgs=[];c.spawn=c.spawn||{};c.kmlExp=c.kmlExp||{};
  OFFERS.forEach(([i,off,kl,when])=>{const v=c.ans[i]?.[off];if(c.spawn[off])return;
-  if(v==="Aceitou"&&c.kmlExp[kl]){const k=c.kmlExp[kl];const n=spawnRecompra(db,c,{stage:2,kml:{name:k.name,data:k.data},kmlAt:k.at,geo:kmlCenter(k.data)||c.geo,origem:"Expansão aceita no "+when,by});
+  if(v==="Aceitou"&&c.kmlExp[kl]){const k=c.kmlExp[kl];const n=spawnRecompra(db,c,{stage:2,kml:{name:k.name,type:k.type,size:k.size,path:k.path,at:k.at},kmlAt:k.at,geo:k.geo||c.geo,origem:"Expansão aceita no "+when,by});
    c.spawn[off]=n.id;c.won=true;msgs.push(`Cliente ganho: "${n.nome}" criado na etapa 2`)}
   if(v==="Recuou"&&when==="colheita"){const n=spawnRecompra(db,c,{status:"lead",leadOrigem:"Recompra recusada na colheita",leadMotivo:c.ans[i]["Motivo (se recusou na colheita)"]||"",leadDate:todayISO(),by});c.spawn[off]=n.id;msgs.push(`Recompra recusada: "${n.nome}" foi para Leads`)}});
  if(c.ans[7]?.["Resultado"]==="Perdeu"&&!c.spawn["Resultado"]){const n=spawnRecompra(db,c,{status:"lead",leadOrigem:"Recompra recusada na recorrência",leadMotivo:c.ans[7]["Motivo da perda"]||"",leadDate:todayISO(),by});c.spawn["Resultado"]=n.id;msgs.push(`Recompra recusada: "${n.nome}" foi para Leads`)}
@@ -193,7 +194,7 @@ function csInfoHTML(db,c,i){const f=CSF[i];const v=c.cs[i]||{};const msg=c.cs[i]
 
 /* ===== Nuvem: Supabase (login, dados, anexos) ===== */
 const sb=supabase.createClient(EO_CONFIG.url,EO_CONFIG.anonKey);
-let ME=null, PROFILES=[], FILEURL={}, SNAP={}, LOADED_AT=0;
+let ME=null, PROFILES=[], FILEURL={}, DLURL={}, SNAP={}, LOADED_AT=0;
 const TABLES=["clients","consultorias","samplers","records"];
 const ROW={
  clients:c=>{const {id,cs,sellerId,seller,...data}=c;return {id,seller_id:sellerId,data,cs:cs||{}}},
@@ -261,7 +262,16 @@ async function loadDb(){
  SNAP={};TABLES.forEach(t=>{SNAP[t]={};d[t].forEach(x=>SNAP[t][x.id]=JSON.stringify(ROW[t](x)))});
  const paths=d.records.flatMap(x=>(x.files||[]).map(f=>f.path)).filter(x=>x&&!FILEURL[x]);
  if(paths.length){const {data}=await sb.storage.from("anexos").createSignedUrls(paths,7*24*3600);(data||[]).forEach(u=>{if(u.signedUrl)FILEURL[u.path]=u.signedUrl})}
+ const ap=d.clients.flatMap(c=>[c.kml,...Object.values(c.kmlExp||{})]).filter(k=>k&&k.path&&!DLURL[k.path]).map(k=>k.path);
+ if(ap.length){const {data}=await sb.storage.from("anexos").createSignedUrls(ap,7*24*3600,{download:true});(data||[]).forEach(u=>{if(u.signedUrl)DLURL[u.path]=u.signedUrl})}
  LOADED_AT=Date.now();return d}
+/* arquivo da área (qualquer formato): vai para o armazenamento e fica disponível para download */
+async function uploadAreaFile(cid,f){const safe=f.name.normalize("NFD").replace(/[^\w.\-]/g,"_");const path=`${cid}/area/${Date.now()}_${safe}`;
+ const {error}=await sb.storage.from("anexos").upload(path,f,{contentType:f.type||"application/octet-stream",upsert:true});if(error)throw error;
+ let geo=null;if(/\.kml$/i.test(f.name)&&f.size<8e6){try{geo=kmlCenter(await f.text())}catch(e){}}
+ const u=await sb.storage.from("anexos").createSignedUrl(path,7*24*3600,{download:f.name});if(u.data)DLURL[path]=u.data.signedUrl;
+ return {name:f.name,type:f.type||"",size:f.size,path,at:new Date().toISOString(),geo}}
+function dlLink(k){if(!k)return "";const u=k.path&&DLURL[k.path];return u?`<a class="dlk" href="${u}" target="_blank" rel="noopener" download="${esc(k.name)}">⬇ ${esc(k.name)}</a>`:`📎 ${esc(k.name)}`}
 
 let syncing=Promise.resolve();
 function setSync(t,err){const e=document.getElementById("sync");if(e){e.textContent=t;e.style.color=err?"#ffb4a8":""}}
@@ -301,7 +311,7 @@ function render(){ if(openId==="new")return newForm(); const c=db.clients.find(x
 const readText=f=>new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result);fr.onerror=()=>r(null);fr.readAsText(f)});
 const readURL=f=>new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result);fr.onerror=()=>r(null);fr.readAsDataURL(f)});
 function shrink(file){return new Promise(res=>{const img=new Image();const u=URL.createObjectURL(file);img.onload=()=>{const m=1600,s=Math.min(1,m/Math.max(img.width,img.height));const cv=document.createElement("canvas");cv.width=img.width*s;cv.height=img.height*s;cv.getContext("2d").drawImage(img,0,0,cv.width,cv.height);URL.revokeObjectURL(u);res(cv.toDataURL("image/jpeg",0.82))};img.onerror=()=>res(null);img.src=u})}
-async function takeKml(c,f){const txt=f.size<2e6?await readText(f):null;c.kml={name:f.name,data:txt&&txt.length<400000?txt:null};c.kmlAt=new Date().toISOString();const g=kmlCenter(txt);if(g)c.geo=g}
+async function takeKml(c,f){await flush();const k=await uploadAreaFile(c.id,f);c.kml=k;c.kmlAt=k.at;if(k.geo)c.geo=k.geo}
 
 function listView(){
  $("#bar").style.display="flex";$("#bar").innerHTML=`<button class="btn" id="new">+ Novo cliente</button>`;
@@ -343,8 +353,8 @@ function takeAg(id){const s=$("#"+id);if(!s)return undefined;if(s.value!=="__new
 function fieldsHTML(c,i){const a=c.ans[i]||{};
  return FIELDS[i].map(([lab,t,opt])=>{const v=esc(a[lab]||"");
   if(t==="sel")return `<label>${lab}</label><select data-l="${lab}">${opt.map(o=>`<option ${a[lab]===o?"selected":""}>${o}</option>`).join("")}</select>`;
-  if(t==="kml")return `<label>KML ou Shapefile ${c.kml?`<span class="kml">· 📎 ${esc(c.kml.name)} (enviar outro substitui)</span>`:""}</label><input type="file" id="kmlUp" accept=".kml,.kmz,.zip,.shp">`;
-  if(t==="kmlx"){const k=(c.kmlExp||{})[lab];return `<label>${lab}</label>${k?`<div class="kml" style="margin-bottom:4px">📎 ${esc(k.name)} · enviado ${fmtDT(k.at)}</div>`:""}<input type="file" data-kx="${lab}" accept=".kml,.kmz,.zip,.shp"><p class="note" style="margin:4px 0 0">Com a oferta aceita e o KML enviado, o cliente conta como ganho e entra um novo cartão “${esc(baseName(c.nome))} RECOMPRA” na etapa 2.</p>`}
+  if(t==="kml")return `<label>Arquivo da área (KML, shapefile ou qualquer formato)</label>${c.kml?`<div class="kml" style="margin-bottom:4px">${dlLink(c.kml)} · enviado ${fmtDT(c.kmlAt)} <span style="color:var(--mut)">(enviar outro substitui)</span></div>`:""}<input type="file" id="kmlUp">`;
+  if(t==="kmlx"){const k=(c.kmlExp||{})[lab];return `<label>${lab} (qualquer formato)</label>${k?`<div class="kml" style="margin-bottom:4px">${dlLink(k)} · enviado ${fmtDT(k.at)}</div>`:""}<input type="file" data-kx="${lab}"><p class="note" style="margin:4px 0 0">Com a oferta aceita e o KML enviado, o cliente conta como ganho e entra um novo cartão “${esc(baseName(c.nome))} RECOMPRA” na etapa 2.</p>`}
   if(t==="multi"){const sel=(a[lab]||"").split(", ");return `<label>${lab}</label><div class="multi" data-l="${lab}" data-multi="1">${opt.map(o=>`<label><input type="checkbox" value="${o}" ${sel.includes(o)?"checked":""}> ${o}</label>`).join("")}</div>`}
   if(t==="area")return `<label>${lab}</label><textarea data-l="${lab}">${v}</textarea>`;
   const ty={num:"number",date:"date",tel:"tel",email:"email"}[t]||"text";
@@ -365,7 +375,7 @@ function clientView(c){
  const csOnly=FIELDS[i].length===0;
  $("#main").innerHTML=`<span id="back" style="color:#0b87ba;font-weight:600;cursor:pointer">← Meus clientes</span>
  <h1 style="margin-top:8px">${esc(c.nome)}</h1>
- <div style="font-size:12.5px;color:var(--mut)">${esc(c.uf)}${c.agencia?" · "+esc(agName(db,c.agencia)):""} ${c.kml?`<span class="kml">· 📎 ${esc(c.kml.name)}</span>`:""}</div>
+ <div style="font-size:12.5px;color:var(--mut)">${esc(c.uf)}${c.agencia?" · "+esc(agName(db,c.agencia)):""} ${c.kml?`<span class="kml">· ${dlLink(c.kml)}</span>`:""}</div>
  <div class="stepper">${STAGES.map((_,k)=>`<div class="${k<i?"done":k===i?"cur":""}"></div>`).join("")}</div>
  <div class="stagehead">Etapa ${c.stage} · ${STAGES[i]}</div>
  ${i===1?deadlineHTML(c):""}
@@ -376,7 +386,7 @@ function clientView(c){
   ${renderRecords(db,c.id,c.stage)||'<p class="note">Nenhum registro ainda.</p>'}
   <div class="addbox">
    <label>Título</label><input id="rTitle" placeholder="Ex.: Zona 2, raízes com lesões">
-   <label>Anexos (fotos, áudios, vídeos, PDFs; vários de uma vez)</label><input type="file" id="rFiles" multiple accept="image/*,audio/*,video/*,.pdf,.kml,.kmz,.doc,.docx,.xls,.xlsx,.csv,.txt">
+   <label>Anexos (qualquer arquivo; vários de uma vez)</label><input type="file" id="rFiles" multiple>
    <label>Observação</label><textarea id="rText"></textarea>
    <button class="btn sm" id="addRec" style="margin-top:8px">Adicionar registro</button>
   </div>
@@ -388,13 +398,16 @@ function clientView(c){
  const crit=$("#crit"),adv=$("#adv");if(crit)crit.onchange=()=>adv.disabled=!crit.checked;
  const apv=document.querySelector('[data-l="Aprovação formalizada"]');if(apv){const upd=()=>{const no=apv.value==="Não";adv.textContent=no?"Mover para Leads":"Avançar → etapa 3";adv.classList.toggle("red",no);if(no)adv.disabled=false;else adv.disabled=!(crit&&crit.checked)};apv.onchange=upd;upd()}
  const doSave=async()=>{collect();c.kmlExp=c.kmlExp||{};
-  for(const e of document.querySelectorAll("[data-kx]")){const f=e.files[0];if(!f)continue;const txt=f.size<2e6?await readText(f):null;c.kmlExp[e.dataset.kx]={name:f.name,data:txt&&txt.length<400000?txt:null,at:new Date().toISOString()};c.ans[i][e.dataset.kx]=f.name}const k=$("#kmlUp");if(k&&k.files[0])await takeKml(c,k.files[0]);c.upd=todayISO();c.vAt=new Date().toISOString();const ms=processOffers(db,c,seller);persist();ms.forEach((m,k)=>setTimeout(()=>toast(m),k*2400));return true};
+  try{toast("Enviando arquivo…");await flush();
+   for(const e of document.querySelectorAll("[data-kx]")){const f=e.files[0];if(!f)continue;c.kmlExp[e.dataset.kx]=await uploadAreaFile(c.id,f);c.ans[i][e.dataset.kx]=f.name}
+   const k=$("#kmlUp");if(k&&k.files[0])await takeKml(c,k.files[0]);
+  }catch(err){toast("Não foi possível enviar o arquivo: "+(err.message||err));return false}c.upd=todayISO();c.vAt=new Date().toISOString();const ms=processOffers(db,c,seller);persist();ms.forEach((m,k)=>setTimeout(()=>toast(m),k*2400));return true};
  const sv=$("#saveSt");if(sv)sv.onclick=async()=>{if(!await doSave())return;toast("Etapa salva");clientView(c)};
  adv.onclick=async()=>{if(!await doSave())return;
-  if(i===0&&!c.kml){toast("Anexe o KML antes de avançar");return}
+  if(i===0&&!c.kml){toast("Anexe o arquivo da área antes de avançar");return}
   if(i===1&&c.ans[1]["Aprovação formalizada"]==="Não"){Object.assign(c,{status:"lead",leadOrigem:"Proposta recusada (1ª oferta)",leadMotivo:c.ans[1]["Motivo da recusa (se não)"]||"",leadDate:todayISO()});persist();toast("Proposta recusada: cliente movido para Leads");openId=null;render();return}
   if(i===5&&(!c.ans[5]["Oferta de expansão"]||c.ans[5]["Oferta de expansão"]==="—")){toast("Registre a oferta de expansão antes de avançar");return}
-  if(i===5&&c.ans[5]["Oferta de expansão"]==="Aceitou"&&!c.kmlExp["KML das novas áreas"]){toast("Anexe o KML das novas áreas para fechar a expansão");return}
+  if(i===5&&c.ans[5]["Oferta de expansão"]==="Aceitou"&&!c.kmlExp["KML das novas áreas"]){toast("Anexe o arquivo das novas áreas para fechar a expansão");return}
   c.stage=c.stage<8?c.stage+1:3;c.hist.push({stage:c.stage,date:todayISO(),by:seller});persist();toast(i===7?"Novo ciclo: volta à etapa 3":"Avançou para a etapa "+c.stage);clientView(c);scrollTo(0,0)};
  $("#addRec").onclick=async()=>{collect();const title=$("#rTitle").value.trim(),text=$("#rText").value.trim();const fl=[...$("#rFiles").files];
   if(!fl.length&&!text){toast("Adicione um anexo ou uma observação");return}

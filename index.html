@@ -95,6 +95,7 @@ td.c,th.c{text-align:center}td.r,th.r{text-align:right}
 .li.on{background:var(--warm)}
 .li.ncs{border-left:4px solid #b3261e}.li.ncs b{color:#b3261e}.li.nv{border-left:4px solid var(--or)}
 .need{display:block;font-style:normal;font-size:11px;font-weight:700;margin-top:2px}.need.r{color:#b3261e}.need.o{color:#c86a1e}
+.dlk{color:#0b6fa0;font-weight:600;word-break:break-all}
 .legend{font-size:11.5px;color:var(--mut);margin:0 0 6px;display:flex;align-items:center;gap:5px;flex-wrap:wrap}.dot{width:9px;height:9px;border-radius:50%;display:inline-block}.dot.r{background:#b3261e}.dot.o{background:var(--or);margin-left:8px}
 .needbox{background:#fbe9e7;border-left:4px solid #b3261e;padding:8px 12px;border-radius:8px;margin-top:10px;font-size:13px;display:flex;justify-content:space-between;align-items:center;gap:10px}
 .chip.won{background:#9fc55a;color:#274820}.chip.rc{background:#ebe3df;color:#622a10}
@@ -182,7 +183,7 @@ function spawnRecompra(db,c,o){const now=new Date().toISOString();const id=newId
 /* Depois de salvar uma etapa no caderno: cria RECOMPRA (aceite + KML) ou lead RECOMPRA (recusa final) */
 function processOffers(db,c,by){const msgs=[];c.spawn=c.spawn||{};c.kmlExp=c.kmlExp||{};
  OFFERS.forEach(([i,off,kl,when])=>{const v=c.ans[i]?.[off];if(c.spawn[off])return;
-  if(v==="Aceitou"&&c.kmlExp[kl]){const k=c.kmlExp[kl];const n=spawnRecompra(db,c,{stage:2,kml:{name:k.name,data:k.data},kmlAt:k.at,geo:kmlCenter(k.data)||c.geo,origem:"Expansão aceita no "+when,by});
+  if(v==="Aceitou"&&c.kmlExp[kl]){const k=c.kmlExp[kl];const n=spawnRecompra(db,c,{stage:2,kml:{name:k.name,type:k.type,size:k.size,path:k.path,at:k.at},kmlAt:k.at,geo:k.geo||c.geo,origem:"Expansão aceita no "+when,by});
    c.spawn[off]=n.id;c.won=true;msgs.push(`Cliente ganho: "${n.nome}" criado na etapa 2`)}
   if(v==="Recuou"&&when==="colheita"){const n=spawnRecompra(db,c,{status:"lead",leadOrigem:"Recompra recusada na colheita",leadMotivo:c.ans[i]["Motivo (se recusou na colheita)"]||"",leadDate:todayISO(),by});c.spawn[off]=n.id;msgs.push(`Recompra recusada: "${n.nome}" foi para Leads`)}});
  if(c.ans[7]?.["Resultado"]==="Perdeu"&&!c.spawn["Resultado"]){const n=spawnRecompra(db,c,{status:"lead",leadOrigem:"Recompra recusada na recorrência",leadMotivo:c.ans[7]["Motivo da perda"]||"",leadDate:todayISO(),by});c.spawn["Resultado"]=n.id;msgs.push(`Recompra recusada: "${n.nome}" foi para Leads`)}
@@ -228,7 +229,7 @@ function csInfoHTML(db,c,i){const f=CSF[i];const v=c.cs[i]||{};const msg=c.cs[i]
 
 /* ===== Nuvem: Supabase (login, dados, anexos) ===== */
 const sb=supabase.createClient(EO_CONFIG.url,EO_CONFIG.anonKey);
-let ME=null, PROFILES=[], FILEURL={}, SNAP={}, LOADED_AT=0;
+let ME=null, PROFILES=[], FILEURL={}, DLURL={}, SNAP={}, LOADED_AT=0;
 const TABLES=["clients","consultorias","samplers","records"];
 const ROW={
  clients:c=>{const {id,cs,sellerId,seller,...data}=c;return {id,seller_id:sellerId,data,cs:cs||{}}},
@@ -296,7 +297,16 @@ async function loadDb(){
  SNAP={};TABLES.forEach(t=>{SNAP[t]={};d[t].forEach(x=>SNAP[t][x.id]=JSON.stringify(ROW[t](x)))});
  const paths=d.records.flatMap(x=>(x.files||[]).map(f=>f.path)).filter(x=>x&&!FILEURL[x]);
  if(paths.length){const {data}=await sb.storage.from("anexos").createSignedUrls(paths,7*24*3600);(data||[]).forEach(u=>{if(u.signedUrl)FILEURL[u.path]=u.signedUrl})}
+ const ap=d.clients.flatMap(c=>[c.kml,...Object.values(c.kmlExp||{})]).filter(k=>k&&k.path&&!DLURL[k.path]).map(k=>k.path);
+ if(ap.length){const {data}=await sb.storage.from("anexos").createSignedUrls(ap,7*24*3600,{download:true});(data||[]).forEach(u=>{if(u.signedUrl)DLURL[u.path]=u.signedUrl})}
  LOADED_AT=Date.now();return d}
+/* arquivo da área (qualquer formato): vai para o armazenamento e fica disponível para download */
+async function uploadAreaFile(cid,f){const safe=f.name.normalize("NFD").replace(/[^\w.\-]/g,"_");const path=`${cid}/area/${Date.now()}_${safe}`;
+ const {error}=await sb.storage.from("anexos").upload(path,f,{contentType:f.type||"application/octet-stream",upsert:true});if(error)throw error;
+ let geo=null;if(/\.kml$/i.test(f.name)&&f.size<8e6){try{geo=kmlCenter(await f.text())}catch(e){}}
+ const u=await sb.storage.from("anexos").createSignedUrl(path,7*24*3600,{download:f.name});if(u.data)DLURL[path]=u.data.signedUrl;
+ return {name:f.name,type:f.type||"",size:f.size,path,at:new Date().toISOString(),geo}}
+function dlLink(k){if(!k)return "";const u=k.path&&DLURL[k.path];return u?`<a class="dlk" href="${u}" target="_blank" rel="noopener" download="${esc(k.name)}">⬇ ${esc(k.name)}</a>`:`📎 ${esc(k.name)}`}
 
 let syncing=Promise.resolve();
 function setSync(t,err){const e=document.getElementById("sync");if(e){e.textContent=t;e.style.color=err?"#ffb4a8":""}}
@@ -419,7 +429,7 @@ function detail(c){
    <div><label>Link da plataforma EarthOptics</label><input id="dPlat" value="${esc(c.plat)}" placeholder="https://earthoptics.app/..."></div>
    <div><label>Link do Salesforce</label><input id="dSf" value="${esc(c.sf)}" placeholder="https://...salesforce.com/..."></div>
    <div><label>Etapa atual</label><select id="dStage">${STAGES.map((s,i)=>`<option value="${i+1}" ${c.stage===i+1?"selected":""}>${i+1}. ${s}</option>`).join("")}</select></div>
-   <div><label>KML / Shapefile</label><div style="font-size:13px;padding-top:6px">${c.kml?`📎 ${esc(c.kml.name)} · enviado ${c.kmlAt?fmtDT(c.kmlAt):""} ${c.kml.data?`<span class="link" id="cpKml">copiar</span>`:""}`:'<span style="color:var(--mut)">não anexado</span>'}</div></div>
+   <div><label>Arquivos da área</label><div style="font-size:13px;padding-top:6px;line-height:1.6">${Object.entries(c.kmlExp||{}).map(([l,k])=>`<div>${dlLink(k)} <span style="color:var(--mut)">· ${esc(l)}</span></div>`).join("")}${c.kml?`<div>${dlLink(c.kml)} <span style="color:var(--mut)">· enviado ${c.kmlAt?fmtDT(c.kmlAt):""}</span></div>`:'<span style="color:var(--mut)">não anexado</span>'}</div></div>
    <div><label>Agência / consultoria</label><select id="dAg"><option value="">— Sem agência —</option>${db.consultorias.slice().sort((a,b)=>a.nome.localeCompare(b.nome)).map(a=>`<option value="${a.id}" ${a.id===c.agencia?"selected":""}>${esc(a.nome)}</option>`).join("")}</select></div>
    <div style="display:flex;align-items:flex-end;grid-column:-2"><button class="btn" id="dSave" style="width:100%">Salvar dados do cliente</button></div>
   </div></div>
@@ -444,7 +454,6 @@ function bindDetail(c){
  $("#dSave").onclick=()=>{const p=$("#dPlat").value.trim(),s=$("#dSf").value.trim();
   if((p&&!/^https?:\/\//.test(p))||(s&&!/^https?:\/\//.test(s))){toast("Os links precisam começar com https://");return}
   c.plat=p;c.sf=s;c.sellerId=$("#dSeller").value;c.seller=pname(c.sellerId);c.agencia=$("#dAg").value;const st=+$("#dStage").value;if(st!==c.stage){c.stage=st;c.hist.push({stage:st,date:todayISO(),by:"CS (painel)"})}c.upd=todayISO();persist("Cliente atualizado");clientes()};
- const cp=$("#cpKml");if(cp)cp.onclick=async()=>{try{await navigator.clipboard.writeText(c.kml.data);toast("KML copiado")}catch(e){toast("Não foi possível copiar")}};
  document.querySelectorAll(".multi .all").forEach(a=>{const box=a.closest(".multi");const its=[...box.querySelectorAll("input:not(.all)")];a.onchange=()=>its.forEach(x=>x.checked=a.checked);its.forEach(x=>x.onchange=()=>a.checked=its.every(y=>y.checked))});
  const ack=$("#ack");if(ack)ack.onclick=()=>{c.csAt=new Date().toISOString();persist("Marcado como respondido");clientes()};
  document.querySelectorAll("[data-go]").forEach(e=>e.onclick=()=>{const n=db.clients.find(x=>x.id===+e.dataset.go);if(n&&n.status==="lead"){view="leads";render()}else goClient(+e.dataset.go)});
