@@ -200,3 +200,13 @@ grant update (read_at) on public.notifications to authenticated;
 grant usage, select on sequence public.notifications_id_seq to authenticated;
 revoke all on public.notifications from anon;
 create index if not exists notifications_seller_idx on public.notifications(seller_id, created_at desc);
+
+-- ---------- CONFIGURAÇÕES (metas do relatório) ----------
+create table if not exists public.settings(key text primary key, value jsonb not null default '{}', updated_at timestamptz not null default now());
+alter table public.settings enable row level security;
+drop policy if exists "config: ver" on public.settings;
+drop policy if exists "config: gestor" on public.settings;
+create policy "config: ver" on public.settings for select to authenticated using (public.is_ativo());
+create policy "config: gestor" on public.settings for all to authenticated using (public.is_gestor()) with check (public.is_gestor());
+grant select, insert, update, delete on public.settings to authenticated;
+revoke all on public.settings from anon;

@@ -86,6 +86,9 @@ details.prev summary{font-weight:600;color:var(--g);font-size:13px;cursor:pointe
 .nt{border:1px solid #e3ddd8;border-radius:12px;padding:10px 12px;margin-bottom:8px;cursor:pointer}.nt.new{border-left:4px solid var(--or);background:#fff8f2}.nt b{color:var(--g);font-size:14px}.nt p{margin:4px 0;font-size:13px}.nt small{color:var(--mut);font-size:11.5px}
 #bell{color:#fff;font-size:12px;text-decoration:none;opacity:.85}#bell.has{opacity:1;font-weight:700;color:var(--br)}
 .doc{font-size:11.5px;font-weight:600;color:#0b6fa0;margin-left:4px;white-space:nowrap}
+.rsum{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px}.rbox{background:var(--warm);border-radius:10px;padding:8px 10px;text-align:center}.rbox b{display:block;font-size:22px;color:var(--g)}.rbox span{font-size:11px;color:var(--mut)}
+.rbig{border:1px solid #e3ddd8;border-radius:12px;padding:10px 12px;margin-bottom:8px;font-size:13px}.rbig.f{border-top:4px solid var(--g2)}.rbig.a{border-top:4px solid var(--or)}.rbig .t{font-weight:700;color:var(--g);margin-bottom:4px}.rbig b{color:var(--g)}
+.rf{display:grid;grid-template-columns:150px 1fr 22px;gap:6px;align-items:center;font-size:11.5px;margin:3px 0}.rf div{background:#eee8e4;border-radius:5px;height:10px}.rf i{display:block;height:100%;background:var(--g2);border-radius:5px}.rf b{text-align:right}
 .cli.fin{cursor:default;background:#faf7f5}
 .chip.won{background:#9fc55a;color:#274820}.chip.rc{background:#ebe3df;color:#622a10}
 </style>
@@ -146,6 +149,11 @@ function propDeadline(c){if(!c.kmlAt)return null;const dl=new Date(new Date(c.km
 function propValue(c){return num(c.cs[1]?.["Valor da proposta (R$)"])}
 function closedValue(c){return num(c.ans[2]?.["Valor final (R$)"])||propValue(c)}
 function samples(c){return num(c.cs[1]?.["Nº de amostras"])}
+/* fechado = passou da etapa 2 (inclui finalizados); data do fechamento = entrada na etapa 3 ou além */
+const isClosed=c=>c.status!=="lead"&&c.stage>=3;
+const isOpen=c=>isActive(c)&&c.stage===2&&propValue(c)>0;
+function closeDate(c){const h=(c.hist||[]).find(x=>x.stage>=3);return (h&&h.date)||c.upd||""}
+function startDate(c){return ((c.hist||[])[0]||{}).date||c.upd||""}
 function alertsOf(db){const a=[];db.clients.filter(isActive).forEach(c=>{const n=days(c);const p=propDeadline(c);
  if(c.stage===2&&p&&!p.done&&p.left<0)a.push([c,`Proposta atrasada: prazo de 48 h vencido há ${Math.round(-p.left)} h`]);
  else if(c.stage===2&&p&&!p.done)a.push([c,`Proposta vence em ${Math.round(p.left)} h`]);
@@ -357,6 +365,19 @@ async function takeKml(c,f){await flush();const k=await uploadAreaFile(c.id,f);c
 const myNotifs=()=>NOTIFS.filter(n=>n.seller_id===sellerId);
 const unread=()=>myNotifs().filter(n=>!n.read_at).length;
 function tabsHTML(){const u=unread();return `<div class="tabs"><button class="${tab==="clientes"?"on":""}" data-tab="clientes">Meus clientes</button><button class="${tab==="notif"?"on":""}" data-tab="notif">Notificações${u?` <span class="badge">${u}</span>`:""}</button><button class="${tab==="fin"?"on":""}" data-tab="fin">Finalizados</button></div>`}
+function resumoHTML(){
+ const mine=db.clients.filter(c=>c.sellerId===sellerId),A=mine.filter(isActive),Fc=mine.filter(isClosed),Op=mine.filter(isOpen);
+ const sum=(a,f)=>a.reduce((s,c)=>s+f(c),0),fmt=n=>Number(n||0).toLocaleString("pt-BR");
+ const st=STAGES.map((s,i)=>A.filter(c=>c.stage===i+1).length),mx=Math.max(1,...st);
+ return `<h2 style="margin-top:22px">Resumo da minha conta</h2>
+ <div class="rsum">
+  <div class="rbox"><b>${A.length}</b><span>clientes na jornada</span></div>
+  <div class="rbox"><b>${mine.filter(c=>c.status==="finalizado").length}</b><span>finalizados</span></div>
+  <div class="rbox"><b>${mine.filter(c=>c.status==="lead").length}</b><span>leads</span></div>
+ </div>
+ <div class="rbig f"><div class="t">Orçamentos fechados</div><div><b>${Fc.length}</b> orçamento(s) · <b>${brl(sum(Fc,closedValue))}</b> · <b>${fmt(sum(Fc,samples))}</b> amostras</div></div>
+ <div class="rbig a"><div class="t">Orçamentos abertos</div><div><b>${Op.length}</b> orçamento(s) · <b>${brl(sum(Op,propValue))}</b> · <b>${fmt(sum(Op,samples))}</b> amostras</div></div>
+ <div class="rbig"><div class="t">Clientes por etapa</div>${STAGES.map((s,i)=>`<div class="rf"><span>${i+1}. ${s}</span><div><i style="width:${st[i]/mx*100}%"></i></div><b>${st[i]}</b></div>`).join("")}</div>`}
 function finView(){
  $("#bar").style.display="none";
  const F=db.clients.filter(c=>c.sellerId===sellerId&&c.status==="finalizado").sort((a,b)=>(b.leadDate||"").localeCompare(a.leadDate||""));
@@ -367,7 +388,8 @@ function finView(){
  <p class="note" style="margin-top:0">Clientes que concluíram a jornada: fizeram a entrega técnica e compraram de novo (a nova compra segue como cartão RECOMPRA) ou chegaram ao fim do ciclo sem renovar. No painel, eles ficam em Leads.</p>
  ${F.map(card).join("")||'<p class="note">Nenhum cliente finalizado ainda.</p>'}
  ${L.length?`<h2>Leads · proposta recusada (${L.length})</h2>${L.map(card).join("")}`:""}
- <p class="note">O CS reativa clientes pelo painel.</p>`;
+ <p class="note">O CS reativa clientes pelo painel.</p>
+ ${resumoHTML()}`;
  bindTabs();document.querySelectorAll("[data-open]").forEach(e=>e.onclick=()=>{const n=db.clients.find(x=>x.id===+e.dataset.open);if(n&&isActive(n)){tab="clientes";openId=n.id;render();scrollTo(0,0)}});
 }
 function bindTabs(){document.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{tab=b.dataset.tab;render();scrollTo(0,0)})}
